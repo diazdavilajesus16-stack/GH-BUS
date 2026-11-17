@@ -1,0 +1,27 @@
+# Entornos y secretos
+.env
+.env.*
+!.env.example
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.sqlite3
+staticfiles/
+media/
+# Node
+node_modules/
+dist/
+build/
+npm-debug.log*
+# Docker / datos
+mysql_data/
+*.sql.gz
+# IDE / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+# Logs
+*.log
