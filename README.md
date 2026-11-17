@@ -44,6 +44,17 @@ python manage.py runserver
 - Swagger: http://localhost:8000/api/docs/
 - Pruebas: `python manage.py test`
 
+### 3. Servicio de tiempo real (Node.js)
+```bash
+cd realtime
+cp .env.example .env     # JWT_SIGNING_KEY y REALTIME_HMAC_SECRET iguales a los de backend/.env
+npm install
+npm test
+npm run dev              # http://localhost:4000/health
+```
+Los tres secretos (`JWT_SIGNING_KEY`, `REALTIME_HMAC_SECRET`) se generan con, por ejemplo:
+`node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`
+
 ## Flujo de ramas
 `main` (estable) <- `develop` (integración) <- `feature/*`
 
