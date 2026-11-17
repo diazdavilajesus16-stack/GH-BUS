@@ -168,7 +168,19 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
+    # Clave propia para firmar los JWT (distinta de SECRET_KEY): el servicio Node.js
+    # la usa solo para VERIFICAR tokens, sin necesidad de conocer la clave de Django.
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": env("JWT_SIGNING_KEY"),
 }
+
+# --------------------------------------------------------------------------
+# Servicio de tiempo real (Node.js). Django publica eventos firmados (HMAC).
+# Si REALTIME_URL está vacío, la publicación se desactiva (útil en pruebas).
+# --------------------------------------------------------------------------
+REALTIME_URL = env("REALTIME_URL", default="")
+REALTIME_HMAC_SECRET = env("REALTIME_HMAC_SECRET", default="")
+REALTIME_TIMEOUT = env.float("REALTIME_TIMEOUT", default=2.0)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "GH BUS API",
