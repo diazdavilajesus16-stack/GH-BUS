@@ -58,6 +58,7 @@ AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # sirve /static/ (admin, etc.) sin depender de nginx
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -141,6 +142,10 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+}
 
 # --------------------------------------------------------------------------
 # Django REST Framework + JWT + Swagger
@@ -168,7 +173,19 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
+    # Clave propia para firmar los JWT (distinta de SECRET_KEY): el servicio Node.js
+    # la usa solo para VERIFICAR tokens, sin necesidad de conocer la clave de Django.
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": env("JWT_SIGNING_KEY"),
 }
+
+# --------------------------------------------------------------------------
+# Servicio de tiempo real (Node.js). Django publica eventos firmados (HMAC).
+# Si REALTIME_URL está vacío, la publicación se desactiva (útil en pruebas).
+# --------------------------------------------------------------------------
+REALTIME_URL = env("REALTIME_URL", default="")
+REALTIME_HMAC_SECRET = env("REALTIME_HMAC_SECRET", default="")
+REALTIME_TIMEOUT = env.float("REALTIME_TIMEOUT", default=2.0)
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "GH BUS API",
@@ -181,6 +198,8 @@ SPECTACULAR_SETTINGS = {
 # CORS
 # --------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=["http://localhost:5173"])
+# Orígenes desde los que se permite iniciar sesión en /admin/ (necesario detrás de nginx/HTTPS).
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 # --------------------------------------------------------------------------
 # Logs
