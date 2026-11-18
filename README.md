@@ -28,6 +28,7 @@ cp .env.example .env          # edita las contraseñas
 docker compose up -d db
 docker compose ps             # debe mostrar "healthy"
 ```
+> Django 6.1 exige **MySQL 8.4 o superior**. El MySQL de Docker Compose ya es 8.4; si usas uno instalado en tu equipo, debe ser 8.4+.
 
 ### 2. Backend Django
 ```bash
