@@ -1,0 +1,26 @@
+@import "@fontsource-variable/inter";
+@import "tailwindcss";
+
+/* Identidad visual GH BUS */
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --color-navy: #10243a;
+  --color-brand: #174a72;
+  --color-brand-light: #2677a8;
+  --color-gold: #f4b942;
+  --color-surface: #f3f6f9;
+  --color-success: #16a36a;
+  --color-danger: #dc3545;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  background-color: var(--color-surface);
+  color: #1e293b;
+  -webkit-font-smoothing: antialiased;
+}
