@@ -1,14 +1,19 @@
-from django.urls import path
+from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
-from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .views import HealthView
 
 urlpatterns = [
     path("health/", HealthView.as_view(), name="health"),
-    # Autenticación JWT (el flujo completo con roles se implementa en el paso 9)
-    path("auth/token/", TokenObtainPairView.as_view(), name="token_obtain_pair"),
-    path("auth/token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
+    # Autenticación, usuarios y roles
+    path("", include("apps.users.urls")),
+    # Operación y despacho: catálogos
+    path("", include("apps.routes.urls")),
+    path("", include("apps.fleet.urls")),
+    path("", include("apps.drivers.urls")),
+    path("", include("apps.operations.urls")),
+    # Bitácora de auditoría
+    path("", include("apps.audit.urls")),
     # Documentación OpenAPI / Swagger
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="docs"),

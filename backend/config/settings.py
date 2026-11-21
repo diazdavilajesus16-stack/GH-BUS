@@ -38,6 +38,7 @@ THIRD_PARTY_APPS = [
 ]
 
 LOCAL_APPS = [
+    "apps.core",
     "apps.users",
     "apps.operations",
     "apps.fleet",
@@ -58,6 +59,7 @@ AUTH_USER_MODEL = "users.User"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",  # sirve /static/ (admin, etc.) sin depender de nginx
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -108,7 +110,9 @@ else:
             "PASSWORD": env("DB_PASSWORD"),
             "HOST": env("DB_HOST", default="127.0.0.1"),
             "PORT": env("DB_PORT", default="3306"),
-            "ATOMIC_REQUESTS": True,
+            # Sin ATOMIC_REQUESTS a propósito: las operaciones críticas usan transaction.atomic()
+            # en la capa de servicio. Así los registros de auditoría de peticiones rechazadas
+            # (login fallido, permiso denegado) no se revierten junto con la petición.
             "CONN_MAX_AGE": 60,
             "OPTIONS": {
                 "charset": "utf8mb4",
@@ -121,6 +125,15 @@ else:
     }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Caché en base de datos: compartida entre los procesos de Gunicorn (límites de intentos de login).
+# La tabla se crea con `python manage.py createcachetable` (el entrypoint de Docker lo hace).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "cache_tabla",
+    }
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -141,6 +154,10 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},
+}
 
 # --------------------------------------------------------------------------
 # Django REST Framework + JWT + Swagger
@@ -151,7 +168,7 @@ REST_FRAMEWORK = {
     ),
     # Todo endpoint exige autenticación salvo que se indique lo contrario.
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_FILTER_BACKENDS": (
         "django_filters.rest_framework.DjangoFilterBackend",
@@ -160,6 +177,15 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    "EXCEPTION_HANDLER": "api.exceptions.exception_handler",
+    # Límites de uso. Cada vista elige qué límites aplica (login, registro, recuperación).
+    "DEFAULT_THROTTLE_RATES": {
+        "login_ip": "30/min",
+        "register": "10/hour",
+        "password_reset": "5/hour",
+    },
+    # Detrás de nginx hay 1 proxy: la IP real del cliente es la que nginx añade a X-Forwarded-For.
+    "NUM_PROXIES": 1 if env.bool("USE_PROXY_HEADERS", default=False) else 0,
 }
 
 SIMPLE_JWT = {
@@ -173,6 +199,39 @@ SIMPLE_JWT = {
     "ALGORITHM": "HS256",
     "SIGNING_KEY": env("JWT_SIGNING_KEY"),
 }
+
+# --------------------------------------------------------------------------
+# Sesión: el token de refresco viaja en una cookie httpOnly (JavaScript no puede leerla).
+# El token de acceso (15 min) se entrega en el cuerpo y vive solo en memoria del navegador.
+# --------------------------------------------------------------------------
+AUTH_COOKIE_NAME = "ghbus_refresh"
+AUTH_COOKIE_PATH = "/api/auth/"
+AUTH_COOKIE_SAMESITE = "Strict"
+# True cuando el sitio se sirva por HTTPS. En desarrollo local por http debe ser False.
+AUTH_COOKIE_SECURE = env.bool("AUTH_COOKIE_SECURE", default=not DEBUG)
+
+# Solo True detrás del nginx de Docker (única puerta de entrada): permite leer la IP real del cliente.
+USE_PROXY_HEADERS = env.bool("USE_PROXY_HEADERS", default=False)
+
+# Intentos fallidos de login permitidos por usuario + IP antes de bloquear temporalmente.
+LOGIN_MAX_FAILURES = env.int("LOGIN_MAX_FAILURES", default=5)
+LOGIN_LOCKOUT_SECONDS = env.int("LOGIN_LOCKOUT_SECONDS", default=900)
+
+# --------------------------------------------------------------------------
+# Correo (recuperación de contraseña). Por defecto se imprime en la consola del servidor.
+# Para enviar correos reales: EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend + datos SMTP.
+# --------------------------------------------------------------------------
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="GH BUS <no-responder@ghbus.local>")
+# Dirección pública del frontend (se usa en los enlaces de los correos).
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173").rstrip("/")
+# El enlace de recuperación de contraseña vence a la hora.
+PASSWORD_RESET_TIMEOUT = 3600
 
 # --------------------------------------------------------------------------
 # Servicio de tiempo real (Node.js). Django publica eventos firmados (HMAC).
@@ -193,6 +252,8 @@ SPECTACULAR_SETTINGS = {
 # CORS
 # --------------------------------------------------------------------------
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=["http://localhost:5173"])
+# Orígenes desde los que se permite iniciar sesión en /admin/ (necesario detrás de nginx/HTTPS).
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
 # --------------------------------------------------------------------------
 # Logs
