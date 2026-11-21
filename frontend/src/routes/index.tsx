@@ -9,6 +9,7 @@ import { ForgotPasswordPage } from '@/pages/ForgotPasswordPage'
 import { ForbiddenPage } from '@/pages/ForbiddenPage'
 import { HomePage } from '@/pages/HomePage'
 import { ConductoresPage, ConfiguracionPage, HorariosPage, RutasPage, VehiculosPage } from '@/pages/OperacionPages'
+import { DespachoPage, ProgramacionPage, SeguimientoPage } from '@/pages/ViajesPages'
 import { LoginPage } from '@/pages/LoginPage'
 import { ModulePlaceholderPage } from '@/pages/ModulePlaceholderPage'
 import { MiCuentaClientePage } from '@/pages/MiCuentaPage'
@@ -29,6 +30,9 @@ const PAGES: Record<string, ReactElement> = {
   '/panel/operacion/horarios': <HorariosPage />,
   '/panel/operacion/vehiculos': <VehiculosPage />,
   '/panel/operacion/conductores': <ConductoresPage />,
+  '/panel/operacion/programacion': <ProgramacionPage />,
+  '/panel/operacion/despacho': <DespachoPage />,
+  '/panel/operacion/seguimiento': <SeguimientoPage />,
 }
 
 // Una ruta por pantalla del menú, cada una protegida con sus roles.

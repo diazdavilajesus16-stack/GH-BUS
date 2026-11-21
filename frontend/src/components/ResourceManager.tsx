@@ -182,7 +182,7 @@ function FieldInput({ field, form, error }: { field: FieldDef; form: ReturnType<
   )
 }
 
-function ResourceForm({ fields, item, singular, endpoint, idKey, onDone, onCancel }: {
+export function ResourceForm({ fields, item, singular, endpoint, idKey, onDone, onCancel }: {
   fields: FieldDef[]; item: Item | null; singular: string; endpoint: string; idKey: string
   onDone: (mensaje: string) => void; onCancel: () => void
 }) {

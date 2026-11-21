@@ -12,6 +12,7 @@ urlpatterns = [
     path("", include("apps.fleet.urls")),
     path("", include("apps.drivers.urls")),
     path("", include("apps.operations.urls")),
+    path("", include("apps.trips.urls")),
     # Bitácora de auditoría
     path("", include("apps.audit.urls")),
     # Documentación OpenAPI / Swagger

@@ -569,8 +569,16 @@ Modelos escritos para `routes`, `fleet`, `drivers` y `operations.configuracion`.
 - `regla_precio` (temporada/horario/demanda) **se difiere** hasta el módulo Comercial; hoy el precio sale solo de `tarifa`.
 - `documento_vehicular.archivo` **se omite**: aún no hay almacenamiento de archivos.
 - `mantenimiento.fecha_inicio/fecha_fin` son `DATE` (el diseño no fijaba el tipo).
-- `incidencia`, `posicion_unidad` y `notificacion` (app `operations`) llegan con el seguimiento de viajes.
+- `incidencia` ya existe (parte 2). `posicion_unidad` y `notificacion` **no** se construyeron: el aviso en vivo usa Socket.IO sin tabla.
 - La no superposición de **tarifas** se valida en el serializador (no con bloqueo de fila): solo la edita el administrador.
+
+## 9.2 Cambios al implementar (Paso 10, parte 2)
+Modelos `viaje`, `asignacion_conductor`, `viaje_estado_historial` (app `trips`) e `incidencia`.
+- El tipo de turno `TURNO` no bloquea la asignación; sí `DESCANSO` y `VACACIONES`. El hueco mínimo entre viajes de un conductor es el mayor entre el margen entre viajes y el descanso mínimo.
+- El documento bloqueante debe estar vigente hasta la **llegada** del viaje, no solo a la salida.
+- `precio_base` se congela desde la tarifa al crear el viaje; solo se edita en Programado/Confirmado.
+- Restricciones en BD: (horario, salida_programada) único; llegada > salida; EN_EMBARQUE/EN_RUTA exigen vehículo; precio ≥ 0.
+- Cancelar un viaje aún no trata boletos (llega con Comercial).
 
 ## 10. Pendiente de definir con la empresa
 Política de cancelación y reembolsos · categorías de licencia exigidas · descanso mínimo de conductores · series de comprobantes asignadas por SUNAT/Nubefact · logotipo vectorial oficial.

@@ -26,3 +26,48 @@ class ConfiguracionSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Usa categorías válidas separadas por comas, p. ej. A-IIIa,A-IIIb.")
             v = ",".join(elegidas)
         return v
+
+
+from django.utils import timezone  # noqa: E402
+
+from apps.trips.models import AsignacionConductor, Viaje  # noqa: E402
+
+from .models import Incidencia  # noqa: E402
+
+
+class IncidenciaSerializer(serializers.ModelSerializer):
+    viaje_codigo = serializers.CharField(source="viaje.codigo", read_only=True)
+    registrada_por_nombre = serializers.CharField(source="registrada_por.username", read_only=True)
+    ocurrida_en = serializers.DateTimeField(required=False)
+
+    class Meta:
+        model = Incidencia
+        fields = ["id", "viaje", "viaje_codigo", "vehiculo", "conductor", "tipo", "severidad", "descripcion",
+                  "ocurrida_en", "resuelta", "resolucion", "registrada_por_nombre", "created_at"]
+        read_only_fields = ["created_at"]
+
+    def validate_descripcion(self, v):
+        v = v.strip()
+        if len(v) < 5:
+            raise serializers.ValidationError("Describe lo ocurrido (mínimo 5 caracteres).")
+        return v
+
+    def validate(self, attrs):
+        if self.instance:  # al editar solo se resuelve: el hecho registrado no se reescribe
+            permitidos = {"resuelta", "resolucion"}
+            extra = set(attrs) - permitidos
+            if extra:
+                raise serializers.ValidationError("Solo se puede marcar como resuelta y registrar la resolución.")
+            if attrs.get("resuelta") and not (attrs.get("resolucion") or self.instance.resolucion).strip():
+                raise serializers.ValidationError({"resolucion": "Indica cómo se resolvió."})
+            return attrs
+        viaje = attrs["viaje"]
+        if viaje.estado == Viaje.Estado.PROGRAMADO:
+            raise serializers.ValidationError({"viaje": "El viaje aún no sale; no puede tener incidencias."})
+        attrs.setdefault("ocurrida_en", timezone.now())
+        if attrs["ocurrida_en"] > timezone.now() + __import__("datetime").timedelta(minutes=5):
+            raise serializers.ValidationError({"ocurrida_en": "No puede ser una fecha futura."})
+        attrs.setdefault("vehiculo", viaje.vehiculo)
+        if attrs.get("conductor") is not None and not AsignacionConductor.objects.filter(viaje=viaje, conductor=attrs["conductor"]).exists():
+            raise serializers.ValidationError({"conductor": "Ese conductor no está asignado al viaje."})
+        return attrs

@@ -15,7 +15,7 @@ Django centraliza la lógica de negocio y es el único que escribe en operacione
 
 ## Estado
 - [x] Fase 1: análisis y planificación
-- [ ] Fase 2: backend (Pasos 1–9 hechos: infraestructura, modelo de datos, autenticación y roles)
+- [ ] Fase 2: backend (Pasos 1–9 hechos; Paso 10 en curso: catálogos y viajes/despacho listos, faltan Comercial, Financiero y Seguridad/reportes)
 - [ ] Fase 3: frontend
 - [ ] Fase 4: integración
 - [ ] Fase 5: pruebas y despliegue
@@ -119,8 +119,24 @@ Conductores los usan administrador y despachador. El cajero puede *leer* rutas, 
   Ciudades reales de San Martín; duraciones, precios y la flota son inventados, solo para probar las pantallas.
 - Los **parámetros** (minutos de bloqueo, margen entre viajes, descanso del conductor, categorías de licencia, IGV…) traen
   los valores iniciales de `docs/database.md` §7 y **deben confirmarse con la empresa** (en especial las categorías de licencia con el MTC).
-- Aún **no** existen: generación de viajes desde los horarios, asignación de vehículo/conductor, despacho, seguimiento
-  (siguiente parte del Paso 10). Documentos vehiculares vencidos todavía no bloquean nada: esa regla se aplica al asignar viajes.
+
+## Operación y despacho — viajes (Paso 10, parte 2)
+Tres pantallas nuevas: **Programación de viajes** (administrador, despachador), **Despacho de unidades** (administrador, despachador)
+y **Seguimiento de viajes** (también conductor, que ve solo sus viajes).
+- **Generar desde horarios:** crea los viajes de un rango de fechas (máx. 62 días) con la tarifa vigente de cada día. Se puede repetir sin duplicar;
+  avisa qué rutas/servicios no tienen tarifa. También hay «Viaje manual».
+- **Asignación sin cruces:** un vehículo o conductor no puede estar en dos viajes a la vez (margen entre viajes y descanso del conductor
+  según *Configuración*). Se bloquea al vehículo inactivo, en mantenimiento, de otro servicio, o con **SOAT / revisión técnica** vencidos o ausentes;
+  y al conductor inactivo, sin licencia vigente de categoría permitida, o en descanso/vacaciones. El servidor explica cada motivo y,
+  ante dos personas asignando a la vez, solo una gana (bloqueo de filas, probado con 10 hilos en MySQL).
+- **Estados:** Programado → Confirmado → En embarque → En ruta ⇄ Retrasado → Finalizado; Cancelado desde antes de salir. Retraso y cancelación exigen motivo;
+  cada cambio queda en el historial y en la auditoría y se avisa en tiempo real (Socket.IO) a las pantallas del personal.
+- **Incidencias** (mecánica, retraso, accidente, clima, pasajero, otro): las de severidad alta generan aviso inmediato al personal.
+- **Alertas** de documentos y licencias vencidos o por vencer, en Despacho.
+- **Para probar con los datos DEMO:** el vehículo DEMO-001 y los conductores demo no traen documentos ni licencias: regístralos en
+  *Vehículos* y *Conductores* (SOAT, Revisión técnica; licencia A-IIIb vigente) o el sistema —correctamente— no dejará asignarlos.
+- Pendiente a propósito: al cancelar un viaje todavía no se gestionan boletos (no existen hasta el módulo Comercial); el cambio a «En embarque» no restringe la hora;
+  el tipo de turno «TURNO» no bloquea al conductor (solo descanso y vacaciones); `posicion_unidad` (GPS) no se construyó.
 
 ## Flujo de ramas
 `main` (estable) <- `develop` (integración) <- `feature/*`
