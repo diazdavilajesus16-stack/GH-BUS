@@ -1,3 +1,4 @@
+import { ReservaPage } from '@/pages/ReservaPage';
 import type { ReactElement } from 'react'
 import { createBrowserRouter, type RouteObject } from 'react-router-dom'
 import { NAV_MODULES } from '@/config/navigation'
@@ -66,6 +67,10 @@ export const router = createBrowserRouter([
       },
     ],
   },
+  
+  // 👇 RUTA AGREGADA PARA EL MAPA DE ASIENTOS 👇
+  { path: '/reservar/:tripId', element: <ReservaPage /> },
+  
   { path: '/403', element: <ForbiddenPage /> },
   { path: '*', element: <NotFoundPage /> },
 ])

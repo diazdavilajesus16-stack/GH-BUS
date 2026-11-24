@@ -13,6 +13,10 @@ urlpatterns = [
     path("", include("apps.drivers.urls")),
     path("", include("apps.operations.urls")),
     path("", include("apps.trips.urls")),
+    
+    # 👇 MÓDULO COMERCIAL: MAPA DE ASIENTOS Y RESERVAS 👇
+    path("", include("apps.reservations.urls")),
+    
     # Bitácora de auditoría
     path("", include("apps.audit.urls")),
     # Documentación OpenAPI / Swagger

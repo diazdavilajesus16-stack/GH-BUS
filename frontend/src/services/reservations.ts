@@ -1,4 +1,4 @@
-import { api } from './api'; // Asegúrate de importar tu instancia de Axios
+import { api } from './api';
 
 export interface Seat {
   seat_number: number;
@@ -26,12 +26,17 @@ export interface ReservationPayload {
 
 export const reservationsApi = {
   getSeatMap: async (tripId: number): Promise<SeatMapResponse> => {
-    const response = await api.get(`/trips/${tripId}/seats/`);
+    const response = await api.get(`/viajes/${tripId}/seats/`);
     return response.data;
   },
 
   createReservation: async (payload: ReservationPayload) => {
     const response = await api.post('/reservations/', payload);
+    return response.data;
+  },
+
+  payReservation: async (reservationId: string) => {
+    const response = await api.post(`/reservations/${reservationId}/pay/`);
     return response.data;
   },
 };

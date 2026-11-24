@@ -3,8 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { SeatMap } from '../components/SeatMap';
 import { reservationsApi } from '../services/reservations';
 import type { Seat } from '../services/reservations';
-// Si tienes el hook de Socket.IO del Paso 6, importalo aquí para actualizaciones en vivo
-// import { useTripRealtime } from '../hooks/useTripRealtime'; 
 
 export const ReservaPage = () => {
   const { tripId } = useParams<{ tripId: string }>();
@@ -15,7 +13,11 @@ export const ReservaPage = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   
-  // Datos del pasajero
+  // Estados para el flujo de pago
+  const [reservationId, setReservationId] = useState<string | null>(null);
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [paying, setPaying] = useState(false);
+
   const [formData, setFormData] = useState({
     document_number: '',
     first_name: '',
@@ -24,7 +26,6 @@ export const ReservaPage = () => {
     phone: ''
   });
 
-  // 1. Cargar los asientos al montar la página
   useEffect(() => {
     if (tripId) {
       reservationsApi.getSeatMap(Number(tripId))
@@ -33,11 +34,6 @@ export const ReservaPage = () => {
         .finally(() => setLoading(false));
     }
   }, [tripId]);
-
-  // (Opcional) 2. Escuchar actualizaciones en tiempo real con Socket.IO
-  // useTripRealtime(Number(tripId), (data) => {
-  //   // Aquí actualizarías el estado de los asientos si otro usuario reserva
-  // });
 
   const handleSeatClick = (seatNumber: number) => {
     setSelectedSeats(prev => 
@@ -52,15 +48,34 @@ export const ReservaPage = () => {
     if (selectedSeats.length === 0) return setError('Selecciona al menos un asiento');
     
     try {
-      await reservationsApi.createReservation({
+      const res = await reservationsApi.createReservation({
         trip_id: Number(tripId),
         seats: selectedSeats,
         passenger: formData
       });
-      alert('¡Reserva creada con éxito! Tienes 10 minutos para pagar.');
-      navigate('/panel'); // Redirigir al panel o a una pantalla de pago
+      setReservationId(res.reservation_id);
+      setError('');
     } catch (err: any) {
       setError(err.response?.data?.error || 'Error al crear la reserva');
+    }
+  };
+
+  const handlePayment = async () => {
+    if (!reservationId) return;
+    setPaying(true);
+    try {
+      const res = await reservationsApi.payReservation(reservationId);
+      setTickets(res.tickets);
+      // Actualizar el mapa para marcar los asientos como ocupados
+      const updatedSeats = seats.map(s => 
+        selectedSeats.includes(s.seat_number) ? { ...s, status: 'OCCUPIED' } : s
+      );
+      setSeats(updatedSeats as Seat[]);
+      setSelectedSeats([]);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Error al procesar el pago');
+    } finally {
+      setPaying(false);
     }
   };
 
@@ -79,56 +94,68 @@ export const ReservaPage = () => {
         />
       </div>
 
-      {/* Columna Derecha: Formulario de Pasajero */}
+      {/* Columna Derecha: Formulario o Pago */}
       <div className="bg-white p-6 rounded-lg shadow-md border border-gray-200">
-        <h2 className="text-xl font-semibold mb-4">Datos del Pasajero</h2>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">DNI / Documento</label>
-            <input 
-              type="text" required
-              className="mt-1 block w-full border border-gray-300 rounded-md p-2"
-              value={formData.document_number}
-              onChange={e => setFormData({...formData, document_number: e.target.value})}
-            />
+        {!reservationId ? (
+          <>
+            <h2 className="text-xl font-semibold mb-4">Datos del Pasajero</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">DNI / Documento</label>
+                <input type="text" required className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+                  value={formData.document_number} onChange={e => setFormData({...formData, document_number: e.target.value})} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Nombres</label>
+                  <input type="text" required className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+                    value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Apellidos</label>
+                  <input type="text" required className="mt-1 block w-full border border-gray-300 rounded-md p-2"
+                    value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} />
+                </div>
+              </div>
+              
+              <div className="mt-6 border-t pt-4">
+                <div className="flex justify-between items-center mb-4">
+                  <span className="text-gray-600">Asientos seleccionados:</span>
+                  <span className="font-bold text-lg text-blue-800">{selectedSeats.join(', ') || 'Ninguno'}</span>
+                </div>
+                <button type="submit" className="w-full bg-[#174A72] text-white py-3 rounded-md font-bold hover:bg-[#10243A] transition-colors" disabled={selectedSeats.length === 0}>
+                  Reservar Asientos
+                </button>
+              </div>
+            </form>
+          </>
+        ) : (
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-green-600 mb-2">¡Reserva Creada!</h2>
+            <p className="text-gray-600 mb-6">Tienes 10 minutos para completar el pago o los asientos se liberarán.</p>
+            
+            {tickets.length === 0 ? (
+              <button onClick={handlePayment} disabled={paying} className="w-full bg-green-600 text-white py-3 rounded-md font-bold hover:bg-green-700 transition-colors">
+                {paying ? 'Procesando pago...' : 'Pagar Ahora'}
+              </button>
+            ) : (
+              <div className="mt-6 bg-blue-50 p-4 rounded border border-blue-200">
+                <h3 className="font-bold text-blue-800 mb-4">¡Pago Exitoso! Tus Boletos:</h3>
+                <div className="space-y-2">
+                  {tickets.map(t => (
+                    <div key={t.seat_number} className="flex justify-between bg-white p-2 rounded shadow-sm">
+                      <span className="font-semibold">Asiento {t.seat_number}</span>
+                      <span className="text-sm font-mono text-gray-600">{t.qr_code}</span>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={() => navigate('/')} className="mt-6 w-full bg-gray-200 text-gray-800 py-2 rounded font-semibold hover:bg-gray-300">
+                  Volver al Inicio
+                </button>
+              </div>
+            )}
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Nombres</label>
-              <input 
-                type="text" required
-                className="mt-1 block w-full border border-gray-300 rounded-md p-2"
-                value={formData.first_name}
-                onChange={e => setFormData({...formData, first_name: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700">Apellidos</label>
-              <input 
-                type="text" required
-                className="mt-1 block w-full border border-gray-300 rounded-md p-2"
-                value={formData.last_name}
-                onChange={e => setFormData({...formData, last_name: e.target.value})}
-              />
-            </div>
-          </div>
-          
-          <div className="mt-6 border-t pt-4">
-            <div className="flex justify-between items-center mb-4">
-              <span className="text-gray-600">Asientos seleccionados:</span>
-              <span className="font-bold text-lg text-blue-800">
-                {selectedSeats.length > 0 ? selectedSeats.join(', ') : 'Ninguno'}
-              </span>
-            </div>
-            <button 
-              type="submit"
-              className="w-full bg-[#174A72] text-white py-3 rounded-md font-bold hover:bg-[#10243A] transition-colors"
-              disabled={selectedSeats.length === 0}
-            >
-              Confirmar Reserva
-            </button>
-          </div>
-        </form>
+        )}
       </div>
     </div>
   );
