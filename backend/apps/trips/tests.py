@@ -15,7 +15,11 @@ from apps.core.tests import cliente_api
 from apps.drivers.models import Conductor, Licencia, TurnoConductor
 from apps.fleet.models import AsientoPlantilla, ConfiguracionAsientos, DocumentoVehicular, Mantenimiento, TipoDocumentoVehicular, Vehiculo
 from apps.operations.models import Configuracion, Incidencia
+from apps.passengers.models import Passenger
+from apps.reservations.models import Reservation, ReservationSeat
+from apps.reservations.services import asientos_ocupados_por_viaje
 from apps.routes.models import Ciudad, Horario, Ruta, Tarifa, TipoServicio
+from apps.tickets.models import Ticket
 from apps.users.roles import ADMINISTRADOR, CAJERO, CONDUCTOR, DESPACHADOR
 
 from . import services
@@ -316,6 +320,41 @@ class EstadosTests(Base):
         self.assertEqual(self.vehiculo.estado, "DISPONIBLE")
         self.assertTrue(RegistroAuditoria.objects.filter(accion="CANCELAR", entidad="viaje").exists())
 
+    def test_cancelar_viaje_anula_reservas_y_boletos_y_libera_asientos(self):
+        v = self.viaje()
+        pasajero = Passenger.objects.create(
+            document_number="TEST-CANCEL-001",
+            first_name="Pasajero",
+            last_name="Demo",
+        )
+        reservas = []
+        for seat_number, reservation_status, ticket_status in (
+            (1, "CONFIRMED", "PAID"),
+            (2, "PENDING", "RESERVED"),
+        ):
+            reserva = Reservation.objects.create(
+                trip=v,
+                total_amount=Decimal("25.00"),
+                status=reservation_status,
+            )
+            ReservationSeat.objects.create(reservation=reserva, seat_number=seat_number)
+            Ticket.objects.create(
+                reservation=reserva,
+                passenger=pasajero,
+                seat_number=seat_number,
+                price=Decimal("25.00"),
+                status=ticket_status,
+            )
+            reservas.append(reserva)
+
+        self.assertEqual(self.estado(v, "CANCELADO", "Falla mecánica").status_code, 200)
+
+        for reserva in reservas:
+            reserva.refresh_from_db()
+            self.assertEqual(reserva.status, "CANCELLED")
+            self.assertEqual(reserva.tickets.get().status, "CANCELLED")
+        self.assertFalse(asientos_ocupados_por_viaje([v.pk]).get(v.pk))
+
     def test_revalida_al_embarcar(self):
         v = self.listo()
         self.estado(v, "CONFIRMADO")
@@ -387,6 +426,16 @@ class PermisosTests(Base):
         self.assertEqual(self.admin.get(f"/api/viajes/?fecha_desde={timezone.localdate(b.salida_programada)}&fecha_hasta={timezone.localdate(b.salida_programada)}").data["count"], 1)
         self.assertEqual(self.admin.get("/api/viajes/?search=AAA-111").data["count"], 0)
 
+    def test_salida_desde_excludes_trips_that_have_already_departed(self):
+        future = self.viaje(en(48))
+        departed = self.viaje(en(1))
+        departed.salida_programada = timezone.now() - timedelta(minutes=1)
+        departed.save(update_fields=["salida_programada"])
+
+        response = self.admin.get("/api/viajes/", {"salida_desde": timezone.now().isoformat()})
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([item["id"] for item in response.data["results"]], [future.pk])
 
 class IncidenciaTests(Base):
     def setUp(self):

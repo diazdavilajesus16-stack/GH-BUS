@@ -13,12 +13,15 @@ Sistema web integral de gestión de transporte interprovincial.
 
 Django centraliza la lógica de negocio y es el único que escribe en operaciones críticas. Node.js solo gestiona tiempo real.
 
-## Estado
-- [x] Fase 1: análisis y planificación
-- [ ] Fase 2: backend (Pasos 1–9 hechos; Paso 10 en curso: catálogos y viajes/despacho listos, faltan Comercial, Financiero y Seguridad/reportes)
-- [ ] Fase 3: frontend
-- [ ] Fase 4: integración
-- [ ] Fase 5: pruebas y despliegue
+## Estado actual
+- Flujos de operación, despacho, comercial, caja, liquidaciones, reportes y seguridad implementados para demostración local.
+- Roles, reservas, asientos, pagos simulados, emisión/validación de QR y cancelación de viajes conectados entre frontend y backend.
+- **Alcance académico:** no hay pasarela real de pago, reembolsos, GPS en vivo ni SMTP configurado por defecto. No presentar la versión local como producción.
+
+## Manuales
+- [Manual de usuario por roles y recorrido de demostración](docs/manual-usuario.md)
+- [Manual técnico de instalación y administración](docs/manual-tecnico.md)
+- [Índice de rutas API](docs/api.md)
 
 ## Puesta en marcha (desarrollo)
 
@@ -115,7 +118,7 @@ Conductores los usan administrador y despachador. El cajero puede *leer* rutas, 
 - Nada se borra: los registros se **desactivan**. Cada alta y cambio queda en la bitácora de auditoría.
 - Reglas ya aplicadas: tarifas activas de una misma ruta/servicio no se cruzan; paradas dentro de la duración de la ruta;
   turnos de un conductor no se cruzan; el estado «En viaje» de un vehículo solo lo pone el sistema; placas y códigos en mayúsculas.
-- **Datos de demostración (NO reales):** `python manage.py cargar_demo` (con `docker compose exec backend python manage.py cargar_demo --forzar`).
+- **Catálogo de localidades, rutas, tipos de servicio y precios referenciales proporcionados para GH BUS:** `python manage.py cargar_catalogo_ghbus` (con Docker: `docker compose exec backend python manage.py cargar_catalogo_ghbus --forzar`). Las tarifas iniciales se asignan solo a Estándar / Económico; los datos no han sido verificados independientemente y no se crean horarios porque no se informaron horas de salida.
   Ciudades reales de San Martín; duraciones, precios y la flota son inventados, solo para probar las pantallas.
 - Los **parámetros** (minutos de bloqueo, margen entre viajes, descanso del conductor, categorías de licencia, IGV…) traen
   los valores iniciales de `docs/database.md` §7 y **deben confirmarse con la empresa** (en especial las categorías de licencia con el MTC).
@@ -133,10 +136,15 @@ y **Seguimiento de viajes** (también conductor, que ve solo sus viajes).
   cada cambio queda en el historial y en la auditoría y se avisa en tiempo real (Socket.IO) a las pantallas del personal.
 - **Incidencias** (mecánica, retraso, accidente, clima, pasajero, otro): las de severidad alta generan aviso inmediato al personal.
 - **Alertas** de documentos y licencias vencidos o por vencer, en Despacho.
-- **Para probar con los datos DEMO:** el vehículo DEMO-001 y los conductores demo no traen documentos ni licencias: regístralos en
-  *Vehículos* y *Conductores* (SOAT, Revisión técnica; licencia A-IIIb vigente) o el sistema —correctamente— no dejará asignarlos.
-- Pendiente a propósito: al cancelar un viaje todavía no se gestionan boletos (no existen hasta el módulo Comercial); el cambio a «En embarque» no restringe la hora;
-  el tipo de turno «TURNO» no bloquea al conductor (solo descanso y vacaciones); `posicion_unidad` (GPS) no se construyó.
+- **Para una presentación local:** `cargar_demo` carga el catálogo y añade la plantilla de asientos y el vehículo ilustrativo `DEMO-001`. No crea horarios, cuentas, conductores, licencias ni documentos vehiculares; registra esos datos de prueba antes de asignar.
+- Al cancelar un viaje, las reservas y boletos asociados se anulan y se liberan los asientos; no existe un flujo de reembolso.
+- Límites conocidos: el cambio a «En embarque» no restringe la hora; el tipo de turno «TURNO» no bloquea al conductor (solo descanso y vacaciones); `posicion_unidad` (GPS) no se construyó.
+
+## Comercial y financiero
+- El cliente autenticado o el personal autorizado puede reservar asientos; el servidor controla la disponibilidad y vence reservas pendientes según la configuración.
+- La confirmación emite el QR. Cancelar un viaje anula sus reservas y boletos relacionados. Las cancelaciones no generan reembolsos.
+- **Yape y Visa son simulados:** no se contacta una pasarela ni se cobran tarjetas. El efectivo queda pendiente hasta que un cajero con caja abierta lo confirme.
+- Caja registra ingresos y egresos de demostración; las liquidaciones se habilitan para viajes finalizados. Los datos no deben interpretarse como contabilidad real.
 
 ## Flujo de ramas
 `main` (estable) <- `develop` (integración) <- `feature/*`

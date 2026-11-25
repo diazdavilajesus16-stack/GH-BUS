@@ -6,9 +6,17 @@ const s = (v: unknown): string => (v === null || v === undefined || v === '' ? '
 const txt = (key: string) => (i: Item) => s(i[key])
 const fecha = (key: string) => (i: Item) => formatDate(i[key])
 const col = (header: string, cell: Column['cell']): Column => ({ header, cell })
+const duracion = (i: Item) => {
+  const minutos = Number(i.duracion_min)
+  if (!Number.isFinite(minutos) || minutos <= 0) return '—'
+  const horas = Math.floor(minutos / 60)
+  const resto = minutos % 60
+  const texto = [horas > 0 ? `${horas} h` : '', resto > 0 ? `${resto} min` : ''].filter(Boolean).join(' ')
+  return `${texto} aprox.`
+}
 
 // Listas desplegables alimentadas por la API (constantes a nivel de módulo: identidad estable).
-const CIUDADES = { endpoint: '/ciudades/', params: { activa: 'true' }, label: (i: Item) => s(i.nombre) }
+const CIUDADES = { endpoint: '/ciudades/', params: { activa: 'true' }, label: (i: Item) => `${s(i.nombre)} · ${s(i.provincia)}, ${s(i.departamento)}` }
 const RUTAS = { endpoint: '/rutas/', params: { activa: 'true' }, label: (i: Item) => `${s(i.codigo)} · ${s(i.nombre)}` }
 const SERVICIOS = { endpoint: '/tipos-servicio/', params: { activo: 'true' }, label: (i: Item) => s(i.nombre) }
 const VEHICULOS = { endpoint: '/vehiculos/', params: { activo: 'true' }, label: (i: Item) => `${s(i.placa)} · ${s(i.marca)} ${s(i.modelo)}` }
@@ -61,7 +69,7 @@ const camposParada: FieldDef[] = [
 const camposTarifa: FieldDef[] = [
   { name: 'ruta', label: 'Ruta', type: 'select', required: true, optionsFrom: RUTAS },
   { name: 'tipo_servicio', label: 'Servicio', type: 'select', required: true, optionsFrom: SERVICIOS },
-  { name: 'monto', label: 'Precio (S/, IGV incluido)', type: 'number', required: true, step: '0.01' },
+  { name: 'monto', label: 'Precio referencial desde (S/)', type: 'number', required: true, step: '0.01' },
   { name: 'vigente_desde', label: 'Vigente desde', type: 'date', required: true },
   { name: 'vigente_hasta', label: 'Vigente hasta', type: 'date', help: 'Vacío = sin fecha de fin' },
 ]
@@ -69,27 +77,32 @@ const camposTarifa: FieldDef[] = [
 export function RutasPage() {
   return (
     <div className="mx-auto max-w-6xl">
-      <Encabezado modulo="Operación y despacho" titulo="Rutas" texto="Rutas, paradas intermedias, tarifas, ciudades y tipos de servicio." />
+      <Encabezado modulo="Operación y despacho" titulo="Rutas" texto="Rutas, paradas intermedias, tarifas referenciales, ciudades y tipos de servicio." />
       <Tabs tabs={[
         { id: 'rutas', label: 'Rutas', element: (
           <ResourceManager endpoint="/rutas/" singular="ruta" activeKey="activa" fields={camposRuta}
             intro="Una ruta une dos ciudades. Desactívala en lugar de borrarla: el historial se conserva."
-            columns={[col('Código', txt('codigo')), col('Nombre', txt('nombre')), col('Origen → Destino', (i) => `${s(i.origen_nombre)} → ${s(i.destino_nombre)}`), col('Duración', (i) => `${s(i.duracion_min)} min`), col('Km', txt('distancia_km'))]} />) },
+            columns={[col('Código', txt('codigo')), col('Nombre', txt('nombre')), col('Origen → Destino', (i) => `${s(i.origen_nombre)} → ${s(i.destino_nombre)}`), col('Duración referencial', duracion), col('Km', txt('distancia_km'))]} />) },
         { id: 'paradas', label: 'Paradas', element: (
           <ResourceManager endpoint="/paradas/" singular="parada" fields={camposParada}
             intro="Paradas intermedias (informativas: el asiento se vende para el viaje completo)."
             columns={[col('Ruta', txt('ruta_codigo')), col('Orden', txt('orden')), col('Ciudad', txt('ciudad_nombre')), col('Min. desde origen', txt('minutos_desde_origen')), col('Dirección', txt('direccion'))]} />) },
         { id: 'tarifas', label: 'Tarifas', element: (
           <ResourceManager endpoint="/tarifas/" singular="tarifa" activeKey="activa" fields={camposTarifa}
-            intro="El precio vigente por ruta y servicio. Las vigencias activas de una misma ruta y servicio no pueden cruzarse."
-            columns={[col('Ruta', txt('ruta_nombre')), col('Servicio', txt('tipo_servicio_nombre')), col('Precio', (i) => `S/ ${s(i.monto)}`), col('Desde', fecha('vigente_desde')), col('Hasta', (i) => (i.vigente_hasta ? formatDate(i.vigente_hasta) : 'Sin fin'))]} />) },
+            intro="Precio base referencial por ruta y servicio. Confirma la tarifa comercial antes de cualquier operación real."
+            columns={[col('Ruta', txt('ruta_nombre')), col('Servicio', txt('tipo_servicio_nombre')), col('Desde (S/)', (i) => `S/ ${s(i.monto)}`), col('Vigente desde', fecha('vigente_desde')), col('Vigente hasta', (i) => (i.vigente_hasta ? formatDate(i.vigente_hasta) : 'Sin fin'))]} />) },
         { id: 'ciudades', label: 'Ciudades', element: (
           <ResourceManager endpoint="/ciudades/" singular="ciudad" activeKey="activa"
-            fields={[{ name: 'nombre', label: 'Nombre', type: 'text', required: true }, { name: 'departamento', label: 'Departamento', type: 'text', required: true }]}
-            columns={[col('Ciudad', txt('nombre')), col('Departamento', txt('departamento'))]} />) },
+            fields={[
+              { name: 'nombre', label: 'Ciudad o localidad', type: 'text', required: true },
+              { name: 'provincia', label: 'Provincia', type: 'text', required: true },
+              { name: 'departamento', label: 'Departamento', type: 'text', required: true },
+              { name: 'observaciones', label: 'Agencia / referencia', type: 'text' },
+            ]}
+            columns={[col('Ciudad o localidad', txt('nombre')), col('Provincia', txt('provincia')), col('Departamento', txt('departamento')), col('Agencia / referencia', txt('observaciones'))]} />) },
         { id: 'servicios', label: 'Tipos de servicio', element: (
           <ResourceManager endpoint="/tipos-servicio/" singular="tipo de servicio" activeKey="activo"
-            fields={[{ name: 'codigo', label: 'Código', type: 'text', required: true, placeholder: 'COMFORT' }, { name: 'nombre', label: 'Nombre', type: 'text', required: true }, { name: 'descripcion', label: 'Descripción', type: 'text' }]}
+            fields={[{ name: 'codigo', label: 'Código', type: 'text', required: true, placeholder: 'BUS_CAMA' }, { name: 'nombre', label: 'Nombre', type: 'text', required: true }, { name: 'descripcion', label: 'Descripción', type: 'text' }]}
             columns={[col('Código', txt('codigo')), col('Nombre', txt('nombre')), col('Descripción', txt('descripcion'))]} />) },
       ]} />
     </div>

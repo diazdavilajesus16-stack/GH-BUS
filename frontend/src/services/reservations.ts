@@ -1,4 +1,4 @@
-import { api } from './api';
+import { http } from './http';
 
 export interface Seat {
   seat_number: number;
@@ -9,6 +9,8 @@ export interface SeatMapResponse {
   trip_id: number;
   seats: Seat[];
 }
+
+export type PaymentMethod = 'YAPE' | 'VISA' | 'CASH'
 
 export interface PassengerData {
   document_number: string;
@@ -24,19 +26,40 @@ export interface ReservationPayload {
   passenger: PassengerData;
 }
 
+export interface CreateReservationResponse {
+  message: string
+  reservation_id: string
+  total_amount: string
+  expires_at: string
+}
+
+export interface PaidTicket {
+  seat_number: number;
+  qr_code: string;
+}
+
+export interface PayReservationResponse {
+  message: string;
+  tickets: PaidTicket[];
+  status?: 'PENDING' | 'CONFIRMED'
+  payment_method?: PaymentMethod
+  expires_at?: string
+}
+
 export const reservationsApi = {
   getSeatMap: async (tripId: number): Promise<SeatMapResponse> => {
-    const response = await api.get(`/viajes/${tripId}/seats/`);
+    const response = await http.get<SeatMapResponse>(`/trips/${tripId}/seats/`);
     return response.data;
   },
 
-  createReservation: async (payload: ReservationPayload) => {
-    const response = await api.post('/reservations/', payload);
+  createReservation: async (payload: ReservationPayload): Promise<CreateReservationResponse> => {
+    const response = await http.post<CreateReservationResponse>('/reservations/', payload);
     return response.data;
   },
 
-  payReservation: async (reservationId: string) => {
-    const response = await api.post(`/reservations/${reservationId}/pay/`);
+  payReservation: async (reservationId: string, paymentMethod?: PaymentMethod): Promise<PayReservationResponse> => {
+    const body = paymentMethod ? { payment_method: paymentMethod } : {}
+    const response = await http.post<PayReservationResponse>(`/reservations/${reservationId}/pay/`, body);
     return response.data;
   },
 };

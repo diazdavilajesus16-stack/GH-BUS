@@ -183,6 +183,7 @@ REST_FRAMEWORK = {
         "login_ip": "30/min",
         "register": "10/hour",
         "password_reset": "5/hour",
+        "assistant": "20/hour",
     },
     # Detrás de nginx hay 1 proxy: la IP real del cliente es la que nginx añade a X-Forwarded-For.
     "NUM_PROXIES": 1 if env.bool("USE_PROXY_HEADERS", default=False) else 0,
@@ -216,6 +217,8 @@ USE_PROXY_HEADERS = env.bool("USE_PROXY_HEADERS", default=False)
 # Intentos fallidos de login permitidos por usuario + IP antes de bloquear temporalmente.
 LOGIN_MAX_FAILURES = env.int("LOGIN_MAX_FAILURES", default=5)
 LOGIN_LOCKOUT_SECONDS = env.int("LOGIN_LOCKOUT_SECONDS", default=900)
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-3.6-flash")
 
 # --------------------------------------------------------------------------
 # Correo (recuperación de contraseña). Por defecto se imprime en la consola del servidor.

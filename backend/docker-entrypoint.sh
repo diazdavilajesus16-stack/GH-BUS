@@ -1,7 +1,7 @@
 #!/bin/sh
 # Aplica las migraciones y arranca Gunicorn. MySQL ya está "healthy" gracias a depends_on.
 set -e
-python manage.py migrate --noinput
+python manage.py migrate --fake-initial --noinput
 # Tabla de caché (contador de intentos de login). Es idempotente.
 python manage.py createcachetable
 exec gunicorn config.wsgi:application \

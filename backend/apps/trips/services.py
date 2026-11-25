@@ -18,7 +18,9 @@ from apps.audit.services import Accion, registrar
 from apps.drivers.models import Conductor, Licencia, TurnoConductor
 from apps.fleet.models import DocumentoVehicular, Mantenimiento, TipoDocumentoVehicular, Vehiculo
 from apps.operations import config
+from apps.reservations.models import Reservation
 from apps.routes.models import Horario, Tarifa
+from apps.tickets.models import Ticket
 
 from .errors import Conflicto, ReglaNoCumplida
 from .models import AsignacionConductor, Viaje, ViajeEstadoHistorial
@@ -350,6 +352,7 @@ def _liberar_vehiculo_si_corresponde(viaje: Viaje):
 def cambiar_estado(viaje_id: int, nuevo: str, usuario, observacion: str = "", request=None) -> Viaje:
     nuevo = E(nuevo)
     observacion = (observacion or "").strip()
+    asientos_liberados = []
     with transaction.atomic():
         viaje = _bloquear_viaje(viaje_id)
         anterior = E(viaje.estado)
@@ -388,9 +391,31 @@ def cambiar_estado(viaje_id: int, nuevo: str, usuario, observacion: str = "", re
             viaje.llegada_real = ahora
         viaje.estado = nuevo
         viaje.save()
+        if nuevo == E.CANCELADO:
+            reservas_activas = Reservation.objects.select_for_update().filter(
+                trip=viaje,
+                status__in=("PENDING", "CONFIRMED"),
+            )
+            reserva_ids = list(reservas_activas.values_list("pk", flat=True))
+            asientos_liberados = [
+                seat_number
+                for seat_number in reservas_activas.values_list("seats__seat_number", flat=True)
+                if seat_number is not None
+            ]
+            reservas_activas.update(status="CANCELLED")
+            Ticket.objects.filter(
+                reservation_id__in=reserva_ids,
+                status__in=("RESERVED", "PAID", "BOARDED"),
+            ).update(status="CANCELLED")
         if nuevo in (E.FINALIZADO, E.CANCELADO):
             _liberar_vehiculo_si_corresponde(viaje)
         _historial(viaje, anterior, nuevo, usuario, observacion)
+    if nuevo == E.CANCELADO:
+        for seat_number in sorted(set(asientos_liberados)):
+            publish_event(
+                "seat.updated",
+                {"trip_id": viaje.pk, "seat_number": seat_number, "status": "available"},
+            )
     registrar(request=request, accion=Accion.CANCELAR if nuevo == E.CANCELADO else Accion.MODIFICAR, entidad="viaje",
               entidad_id=viaje.pk, cambios={"estado": [anterior.value, nuevo.value], "observacion": observacion})
     _avisar(viaje)
