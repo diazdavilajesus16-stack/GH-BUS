@@ -10,6 +10,7 @@ from rest_framework.test import APIClient
 
 from api.assistant import buscar_viajes_disponibles
 from apps.finance.models import CashMovement, CashRegister
+from apps.fleet.models import AsientoPlantilla, ConfiguracionAsientos, Vehiculo
 from apps.passengers.models import Passenger
 from apps.reservations.models import Reservation, ReservationSeat
 from apps.reservations.services import asientos_ocupados_por_viaje
@@ -67,6 +68,31 @@ class ReservationPaymentTests(TestCase):
         self.assertEqual(response.status_code, 201, response.content)
         return response.data['reservation_id']
 
+    def assign_vehicle_with_seats(self, count=2):
+        configuration = ConfiguracionAsientos.objects.create(
+            nombre='Configuración de prueba',
+            pisos=1,
+            total_asientos=count,
+        )
+        for seat_number in range(1, count + 1):
+            AsientoPlantilla.objects.create(
+                configuracion=configuration,
+                numero=seat_number,
+                piso=1,
+                fila=1,
+                columna=seat_number,
+            )
+        vehicle = Vehiculo.objects.create(
+            placa='TEST-001',
+            marca='Prueba',
+            modelo='Bus',
+            anio=2025,
+            configuracion_asientos=configuration,
+            tipo_servicio=self.trip.tipo_servicio,
+        )
+        self.trip.vehiculo = vehicle
+        self.trip.save(update_fields=['vehiculo'])
+
     def test_creating_reservation_creates_ticket_with_passenger(self):
         reservation_id = self.create_reservation()
 
@@ -84,6 +110,38 @@ class ReservationPaymentTests(TestCase):
             call('seat.updated', {'trip_id': self.trip.pk, 'seat_number': 1, 'status': 'held'}),
             call('seat.updated', {'trip_id': self.trip.pk, 'seat_number': 2, 'status': 'held'}),
         ])
+
+    def test_reservation_rejects_duplicate_seats(self):
+        response = self.client.post('/api/reservations/', {
+            'trip_id': self.trip.pk,
+            'seats': [1, 1],
+            'passenger': self.passenger_data,
+        }, format='json')
+
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(Reservation.objects.count(), 0)
+        self.assertEqual(Ticket.objects.count(), 0)
+
+    def test_reservation_rejects_seat_missing_from_vehicle_configuration(self):
+        self.assign_vehicle_with_seats()
+        self.trip.vehiculo.configuracion_asientos.asientos.filter(numero=2).delete()
+
+        response = self.client.post('/api/reservations/', {
+            'trip_id': self.trip.pk,
+            'seats': [2],
+            'passenger': self.passenger_data,
+        }, format='json')
+
+        self.assertEqual(response.status_code, 400, response.content)
+        self.assertEqual(Reservation.objects.count(), 0)
+
+    def test_seat_map_uses_assigned_vehicle_configuration(self):
+        self.assign_vehicle_with_seats()
+
+        response = self.client.get(f'/api/trips/{self.trip.pk}/seats/')
+
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual([seat['seat_number'] for seat in response.data['seats']], [1, 2])
 
     def test_anonymous_users_cannot_create_or_pay_reservations(self):
         self.client.force_authenticate(user=None)
@@ -276,6 +334,27 @@ class ReservationPaymentTests(TestCase):
                 self.assertEqual(reservation.status, 'CONFIRMED')
                 self.assertEqual(reservation.payment_method, method)
                 self.assertIn('simulado', CashMovement.objects.get(reservation=reservation).description)
+
+    def test_non_cash_staff_payments_do_not_increase_cash_register_balance(self):
+        self.user.groups.add(Group.objects.get_or_create(name=CAJERO)[0])
+        register = CashRegister.objects.create(owner=self.user, opening_amount=Decimal('100.00'))
+
+        for seat_number, method in ((1, 'YAPE'), (2, 'VISA')):
+            with self.subTest(method=method):
+                reservation_id = self.create_reservation([seat_number])
+                response = self.client.post(
+                    f'/api/reservations/{reservation_id}/pay/',
+                    {'payment_method': method},
+                    format='json',
+                )
+
+                self.assertEqual(response.status_code, 200, response.content)
+                movement = CashMovement.objects.get(reservation_id=reservation_id)
+                self.assertIsNone(movement.cash_register)
+
+        summary = self.client.get('/api/cash/summary/')
+        self.assertEqual(summary.status_code, 200, summary.content)
+        self.assertEqual(summary.data['current_register']['expected_amount'], Decimal('100.00'))
 
     def test_confirmed_seats_remain_occupied_after_the_pending_hold_expires(self):
         reservation_id = self.create_reservation()

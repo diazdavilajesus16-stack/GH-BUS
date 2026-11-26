@@ -29,6 +29,14 @@ def asientos_ocupados_por_viaje(
     return dict(ocupados)
 
 
+def asientos_validos_para_viaje(viaje):
+    if viaje.vehiculo_id is None:
+        return list(range(1, 41))
+    return list(
+        viaje.vehiculo.configuracion_asientos.asientos.order_by("numero").values_list("numero", flat=True)
+    )
+
+
 def crear_reserva(trip_id, asientos, total_amount, usuario=None):
     with transaction.atomic():
         trip = Viaje.objects.select_for_update().get(id=trip_id)
@@ -37,6 +45,18 @@ def crear_reserva(trip_id, asientos, total_amount, usuario=None):
             raise ValueError("El viaje no está disponible para reservas.")
         if trip.salida_programada <= timezone.now():
             raise ValueError("El viaje ya salió y no está disponible para reservas.")
+        if not isinstance(asientos, (list, tuple)) or not asientos:
+            raise ValueError("Debe seleccionar al menos un asiento.")
+        if any(type(asiento) is not int or asiento <= 0 for asiento in asientos):
+            raise ValueError("Los números de asiento deben ser enteros positivos.")
+        if len(set(asientos)) != len(asientos):
+            raise ValueError("No se pueden repetir asientos.")
+
+        asientos_no_configurados = sorted(set(asientos) - set(asientos_validos_para_viaje(trip)))
+        if asientos_no_configurados:
+            raise ValueError(
+                f"Los asientos {asientos_no_configurados} no están disponibles para este viaje."
+            )
 
         asientos_ocupados = ReservationSeat.objects.filter(
             reservation__trip=trip,

@@ -17,7 +17,7 @@ from apps.tickets.models import Ticket
 from apps.users.permissions import HasAnyRole
 from apps.users.roles import ADMINISTRADOR, CAJERO, CLIENTE
 from .models import Reservation, ReservationSeat
-from .services import asientos_ocupados_por_viaje, crear_reserva
+from .services import asientos_ocupados_por_viaje, asientos_validos_para_viaje, crear_reserva
 from .serializers import MiReservaSerializer, ReservationListSerializer
 from api.realtime import publish_event
 
@@ -25,14 +25,20 @@ class SeatMapView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, trip_id):
-        trip = get_object_or_404(Viaje, id=trip_id)
-        capacity = getattr(trip.vehiculo, 'capacidad', 40) if trip.vehiculo else 40
+        trip = get_object_or_404(
+            Viaje.objects.select_related("vehiculo__configuracion_asientos"),
+            id=trip_id,
+        )
+        asientos_validos = asientos_validos_para_viaje(trip)
 
         ahora = timezone.now()
         asientos_ocupados = asientos_ocupados_por_viaje([trip.id], ahora=ahora).get(trip.id, set())
         mapa = [
-            {'seat_number': i, 'status': 'OCCUPIED' if i in asientos_ocupados else 'AVAILABLE'}
-            for i in range(1, capacity + 1)
+            {
+                'seat_number': numero,
+                'status': 'OCCUPIED' if numero in asientos_ocupados else 'AVAILABLE',
+            }
+            for numero in asientos_validos
         ]
         return Response({'trip_id': trip.id, 'seats': mapa})
 
@@ -211,7 +217,11 @@ class PayReservationView(APIView):
                 elif payment_method == Reservation.PaymentMethod.CASH:
                     descripcion_pago = 'Pago en efectivo en caja'
                 CashMovement.objects.create(
-                    cash_register=caja,
+                    cash_register=(
+                        None
+                        if payment_method in (Reservation.PaymentMethod.YAPE, Reservation.PaymentMethod.VISA)
+                        else caja
+                    ),
                     reservation=reserva,
                     created_by=request.user if request.user.is_authenticated else None,
                     movement_type=CashMovement.MovementType.INCOME,
