@@ -1,43 +1,76 @@
 import axios from 'axios'
 import { env } from '@/config/env'
-import { clearTokens, getRefreshToken, setAccessToken, setRefreshToken } from './tokenStore'
+import type { AuthUser } from '@/types/auth'
+import { toRoles } from '@/utils/roles'
+import { clearTokens, setAccessToken, setSessionFlag } from './tokenStore'
 
 // Cliente "limpio" (sin interceptores) para evitar bucles al renovar el token.
-const bare = axios.create({ baseURL: env.apiUrl, timeout: 15000 })
+// withCredentials: el navegador envía/recibe la cookie httpOnly del refresco.
+const bare = axios.create({ baseURL: env.apiUrl, timeout: 15000, withCredentials: true })
 
-interface TokenPair {
+interface SesionApi {
   access: string
-  refresh: string
+  user: Omit<AuthUser, 'roles'> & { roles: unknown }
 }
 
-export async function login(username: string, password: string): Promise<string> {
-  const { data } = await bare.post<TokenPair>('/auth/token/', { username, password })
+export interface Sesion {
+  access: string
+  user: AuthUser
+}
+
+function aSesion(data: SesionApi): Sesion {
   setAccessToken(data.access)
-  setRefreshToken(data.refresh)
-  return data.access
+  setSessionFlag(true)
+  return { access: data.access, user: { ...data.user, roles: toRoles(data.user.roles) } }
 }
 
-let refreshing: Promise<string> | null = null
+export interface RegistroDatos {
+  username: string
+  email: string
+  password: string
+  first_name: string
+  last_name: string
+  telefono?: string
+}
 
-/** Renueva el token de acceso. Si varias peticiones lo piden a la vez, comparten una sola llamada. */
-export function refreshAccessToken(): Promise<string> {
+export async function login(username: string, password: string): Promise<Sesion> {
+  const { data } = await bare.post<SesionApi>('/auth/login/', { username, password })
+  return aSesion(data)
+}
+
+export async function registrar(datos: RegistroDatos): Promise<Sesion> {
+  const { data } = await bare.post<SesionApi>('/auth/register/', datos)
+  return aSesion(data)
+}
+
+let refreshing: Promise<Sesion> | null = null
+
+/** Renueva la sesión con la cookie. Si varias peticiones lo piden a la vez, comparten una sola llamada
+ * (el refresco es de un solo uso: dos llamadas paralelas harían fallar a la segunda). */
+export function refreshSession(): Promise<Sesion> {
   if (refreshing) return refreshing
-  const refresh = getRefreshToken()
-  if (!refresh) return Promise.reject(new Error('sin-refresh'))
-
   refreshing = bare
-    .post<{ access: string; refresh?: string }>('/auth/token/refresh/', { refresh })
-    .then(({ data }) => {
-      setAccessToken(data.access)
-      if (data.refresh) setRefreshToken(data.refresh)
-      return data.access
-    })
+    .post<SesionApi>('/auth/refresh/')
+    .then(({ data }) => aSesion(data))
     .finally(() => {
       refreshing = null
     })
   return refreshing
 }
 
-export function logout(): void {
+export async function logout(): Promise<void> {
+  try {
+    await bare.post('/auth/logout/')
+  } catch {
+    /* si el servidor no responde igual cerramos la sesión local */
+  }
   clearTokens()
+}
+
+export async function solicitarRecuperacion(email: string): Promise<void> {
+  await bare.post('/auth/password/reset/', { email })
+}
+
+export async function restablecerClave(uid: string, token: string, new_password: string): Promise<void> {
+  await bare.post('/auth/password/reset/confirm/', { uid, token, new_password })
 }

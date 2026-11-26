@@ -1,7 +1,8 @@
-# Modelo de datos de GH BUS
+# Modelo conceptual de datos de GH BUS
 
-Diseño de la base de datos (Paso 8). Motor: **MySQL 8.4 / InnoDB**, `utf8mb4`. Acceso y escritura únicamente a través del ORM de Django.
-Este documento es el contrato: los modelos de cada app se escriben a partir de él.
+> **Nota de vigencia:** este documento conserva el diseño inicial y puede describir entidades todavía no implementadas o nombres distintos a los actuales. No es el contrato del esquema físico. Para conocer las tablas reales y sus cambios, usa los modelos y migraciones de Django; estos son la fuente de verdad de la aplicación.
+
+El diseño inicial planteaba **MySQL 8.4 / InnoDB**, `utf8mb4`, con acceso de negocio a través del ORM de Django. La aplicación se está preparando para PostgreSQL en Supabase; las notas de MySQL en este documento describen decisiones históricas y no sustituyen las migraciones de Django ni la verificación de portabilidad. Para instalación y límites, consulta el [manual técnico](manual-tecnico.md).
 
 ## 0. Convenciones
 
@@ -165,7 +166,7 @@ ciudad
   nombre · departamento · activa
   UQ (nombre, departamento)
 
-tipo_servicio                             -- p. ej. Comfort Class
+tipo_servicio                             -- p. ej. Económico, Estándar, Semi-Cama, Bus Cama o Comfort Class
   codigo UQ · nombre · descripcion · activo
 
 ruta
@@ -563,6 +564,22 @@ El script [`verificacion_diseno.py`](verificacion_diseno.py) construye las tabla
 | Dos cajas abiertas del mismo cajero | Rechazado |
 
 Para repetirlo contra el MySQL de Docker (8.4), ver las instrucciones al inicio del script. Crea y borra solo la base temporal `proto`.
+
+## 9.1 Cambios al implementar (Paso 10, parte 1)
+Modelos escritos para `routes`, `fleet`, `drivers` y `operations.configuracion`. Diferencias respecto al diseño:
+- `regla_precio` (temporada/horario/demanda) **se difiere** hasta el módulo Comercial; hoy el precio sale solo de `tarifa`.
+- `documento_vehicular.archivo` **se omite**: aún no hay almacenamiento de archivos.
+- `mantenimiento.fecha_inicio/fecha_fin` son `DATE` (el diseño no fijaba el tipo).
+- `incidencia` ya existe (parte 2). `posicion_unidad` y `notificacion` **no** se construyeron: el aviso en vivo usa Socket.IO sin tabla.
+- La no superposición de **tarifas** se valida en el serializador (no con bloqueo de fila): solo la edita el administrador.
+
+## 9.2 Cambios al implementar (Paso 10, parte 2)
+Modelos `viaje`, `asignacion_conductor`, `viaje_estado_historial` (app `trips`) e `incidencia`.
+- El tipo de turno `TURNO` no bloquea la asignación; sí `DESCANSO` y `VACACIONES`. El hueco mínimo entre viajes de un conductor es el mayor entre el margen entre viajes y el descanso mínimo.
+- El documento bloqueante debe estar vigente hasta la **llegada** del viaje, no solo a la salida.
+- `precio_base` se congela desde la tarifa al crear el viaje; solo se edita en Programado/Confirmado.
+- Restricciones en BD: (horario, salida_programada) único; llegada > salida; EN_EMBARQUE/EN_RUTA exigen vehículo; precio ≥ 0.
+- Cancelar un viaje aún no trata boletos (llega con Comercial).
 
 ## 10. Pendiente de definir con la empresa
 Política de cancelación y reembolsos · categorías de licencia exigidas · descanso mínimo de conductores · series de comprobantes asignadas por SUNAT/Nubefact · logotipo vectorial oficial.

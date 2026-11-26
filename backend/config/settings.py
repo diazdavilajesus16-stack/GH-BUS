@@ -6,6 +6,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -38,6 +39,7 @@ THIRD_PARTY_APPS = [
 ]
 
 LOCAL_APPS = [
+    "apps.core",
     "apps.users",
     "apps.operations",
     "apps.fleet",
@@ -89,18 +91,28 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 # --------------------------------------------------------------------------
-# Base de datos: MySQL (única fuente de datos).
-# DB_ENGINE=sqlite existe solo para pruebas automáticas rápidas (CI);
-# el sistema real usa siempre MySQL.
+# Base de datos. PostgreSQL es el destino de producción (Supabase).
+# MySQL se conserva para el entorno Docker actual y la exportación de datos.
+# SQLite se usa únicamente en pruebas rápidas y durante collectstatic.
 # --------------------------------------------------------------------------
-if env("DB_ENGINE", default="mysql") == "sqlite":
+DB_ENGINE = env("DB_ENGINE", default="mysql").lower()
+
+if DB_ENGINE == "sqlite":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
-else:
+elif DB_ENGINE == "postgres":
+    DATABASES = {"default": env.db_url("DATABASE_URL")}
+    DATABASES["default"].update(
+        {
+            "CONN_MAX_AGE": 60,
+            "CONN_HEALTH_CHECKS": True,
+        }
+    )
+elif DB_ENGINE == "mysql":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",
@@ -109,19 +121,33 @@ else:
             "PASSWORD": env("DB_PASSWORD"),
             "HOST": env("DB_HOST", default="127.0.0.1"),
             "PORT": env("DB_PORT", default="3306"),
-            "ATOMIC_REQUESTS": True,
+            # Sin ATOMIC_REQUESTS: las operaciones críticas usan transaction.atomic().
             "CONN_MAX_AGE": 60,
             "OPTIONS": {
                 "charset": "utf8mb4",
-                # Evita bloqueos innecesarios (gap locks) en operaciones concurrentes
-                # como la venta de asientos.
                 "isolation_level": "read committed",
                 "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
             },
         }
     }
+else:
+    raise ImproperlyConfigured(
+        f"DB_ENGINE no reconocido: {DB_ENGINE}. Usa postgres, mysql o sqlite."
+    )
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+DATABASES["default"]["ATOMIC_REQUESTS"] = False
+USE_PROXY_HEADERS = env.bool("USE_PROXY_HEADERS", default=False)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if USE_PROXY_HEADERS else None
+
+# Caché en base de datos: compartida entre los procesos de Gunicorn (límites de intentos de login).
+# La tabla se crea con `python manage.py createcachetable` (el entrypoint de Docker lo hace).
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "cache_tabla",
+    }
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
@@ -156,7 +182,7 @@ REST_FRAMEWORK = {
     ),
     # Todo endpoint exige autenticación salvo que se indique lo contrario.
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "DEFAULT_PAGINATION_CLASS": "apps.core.pagination.StandardPagination",
     "PAGE_SIZE": 20,
     "DEFAULT_FILTER_BACKENDS": (
         "django_filters.rest_framework.DjangoFilterBackend",
@@ -165,6 +191,16 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
+    "EXCEPTION_HANDLER": "api.exceptions.exception_handler",
+    # Límites de uso. Cada vista elige qué límites aplica (login, registro, recuperación).
+    "DEFAULT_THROTTLE_RATES": {
+        "login_ip": "30/min",
+        "register": "10/hour",
+        "password_reset": "5/hour",
+        "assistant": "20/hour",
+    },
+    # Detrás de nginx hay 1 proxy: la IP real del cliente es la que nginx añade a X-Forwarded-For.
+    "NUM_PROXIES": 1 if USE_PROXY_HEADERS else 0,
 }
 
 SIMPLE_JWT = {
@@ -178,6 +214,38 @@ SIMPLE_JWT = {
     "ALGORITHM": "HS256",
     "SIGNING_KEY": env("JWT_SIGNING_KEY"),
 }
+
+# --------------------------------------------------------------------------
+# Sesión: el token de refresco viaja en una cookie httpOnly (JavaScript no puede leerla).
+# El token de acceso (15 min) se entrega en el cuerpo y vive solo en memoria del navegador.
+# --------------------------------------------------------------------------
+AUTH_COOKIE_NAME = "ghbus_refresh"
+AUTH_COOKIE_PATH = "/api/auth/"
+AUTH_COOKIE_SAMESITE = "Strict"
+# True cuando el sitio se sirva por HTTPS. En desarrollo local por http debe ser False.
+AUTH_COOKIE_SECURE = env.bool("AUTH_COOKIE_SECURE", default=not DEBUG)
+
+# Intentos fallidos de login permitidos por usuario + IP antes de bloquear temporalmente.
+LOGIN_MAX_FAILURES = env.int("LOGIN_MAX_FAILURES", default=5)
+LOGIN_LOCKOUT_SECONDS = env.int("LOGIN_LOCKOUT_SECONDS", default=900)
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-3.6-flash")
+
+# --------------------------------------------------------------------------
+# Correo (recuperación de contraseña). Por defecto se imprime en la consola del servidor.
+# Para enviar correos reales: EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend + datos SMTP.
+# --------------------------------------------------------------------------
+EMAIL_BACKEND = env("EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = env("EMAIL_HOST", default="localhost")
+EMAIL_PORT = env.int("EMAIL_PORT", default=587)
+EMAIL_HOST_USER = env("EMAIL_HOST_USER", default="")
+EMAIL_HOST_PASSWORD = env("EMAIL_HOST_PASSWORD", default="")
+EMAIL_USE_TLS = env.bool("EMAIL_USE_TLS", default=True)
+DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="GH BUS <no-responder@ghbus.local>")
+# Dirección pública del frontend (se usa en los enlaces de los correos).
+FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173").rstrip("/")
+# El enlace de recuperación de contraseña vence a la hora.
+PASSWORD_RESET_TIMEOUT = 3600
 
 # --------------------------------------------------------------------------
 # Servicio de tiempo real (Node.js). Django publica eventos firmados (HMAC).

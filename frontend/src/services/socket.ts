@@ -1,6 +1,6 @@
 import { io, type Socket } from 'socket.io-client'
 import { env } from '@/config/env'
-import { refreshAccessToken } from './authService'
+import { refreshSession } from './authService'
 import { SESSION_EXPIRED_EVENT } from './http'
 import { clearTokens, getAccessToken } from './tokenStore'
 
@@ -35,7 +35,7 @@ export function getSocket(): Socket {
     if (err.message !== 'unauthorized' || authRetries >= MAX_AUTH_RETRIES) return
     authRetries += 1
     try {
-      await refreshAccessToken()
+      await refreshSession()
     } catch {
       clearTokens()
       window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT))

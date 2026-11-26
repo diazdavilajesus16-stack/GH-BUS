@@ -1,35 +1,33 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { login as apiLogin, logout as apiLogout, refreshAccessToken } from '@/services/authService'
+import {
+  login as apiLogin,
+  logout as apiLogout,
+  refreshSession,
+  registrar as apiRegistrar,
+  type RegistroDatos,
+} from '@/services/authService'
 import { SESSION_EXPIRED_EVENT } from '@/services/http'
 import { resetSocket } from '@/services/socket'
-import { clearTokens, getRefreshToken } from '@/services/tokenStore'
+import { clearTokens, hasSessionFlag } from '@/services/tokenStore'
 import type { AuthStatus, AuthUser } from '@/types/auth'
-import { decodeJwt } from '@/utils/jwt'
-import { toRoles } from '@/utils/roles'
 import { AuthContext, type AuthContextValue } from './authContextValue'
-
-function userFromToken(token: string): AuthUser {
-  const claims = decodeJwt(token)
-  if (!claims) throw new Error('Token inválido')
-  return { id: String(claims.user_id), roles: toRoles(claims.roles) }
-}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null)
   const [status, setStatus] = useState<AuthStatus>('loading')
 
-  // Al abrir la aplicación: si hay token de refresco, intenta restaurar la sesión.
+  // Al abrir la aplicación: si hubo una sesión, intenta restaurarla con la cookie de refresco.
   useEffect(() => {
     let cancelled = false
     async function restore() {
-      if (!getRefreshToken()) {
+      if (!hasSessionFlag()) {
         setStatus('anonymous')
         return
       }
       try {
-        const token = await refreshAccessToken()
+        const { user: restored } = await refreshSession()
         if (cancelled) return
-        setUser(userFromToken(token))
+        setUser(restored)
         setStatus('authenticated')
       } catch {
         clearTokens()
@@ -52,21 +50,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(SESSION_EXPIRED_EVENT, onExpired)
   }, [])
 
-  const login = useCallback(async (username: string, password: string) => {
-    const token = await apiLogin(username, password)
-    setUser(userFromToken(token))
+  const start = useCallback((u: AuthUser) => {
+    setUser(u)
     setStatus('authenticated')
     resetSocket()
+    return u
   }, [])
 
-  const logout = useCallback(() => {
-    apiLogout()
+  const login = useCallback(async (username: string, password: string) => start((await apiLogin(username, password)).user), [start])
+  const register = useCallback(async (datos: RegistroDatos) => start((await apiRegistrar(datos)).user), [start])
+
+  const endSession = useCallback(() => {
+    clearTokens()
     setUser(null)
     setStatus('anonymous')
     resetSocket()
   }, [])
 
-  const value = useMemo<AuthContextValue>(() => ({ user, status, login, logout }), [user, status, login, logout])
+  const logout = useCallback(async () => {
+    await apiLogout()
+    endSession()
+  }, [endSession])
+
+  const value = useMemo<AuthContextValue>(
+    () => ({ user, status, login, register, logout, setUser, endSession }),
+    [user, status, login, register, logout, endSession],
+  )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

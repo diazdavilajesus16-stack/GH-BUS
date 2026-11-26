@@ -1,12 +1,11 @@
 /**
- * Almacén de tokens.
+ * Estado de la sesión en el navegador.
  * - Token de acceso: solo en memoria (no queda en el disco del navegador).
- * - Token de refresco: sessionStorage (se borra al cerrar la pestaña).
- *
- * Esto es provisional: en el paso 9 el refresco pasará a una cookie httpOnly,
- * que JavaScript no puede leer (más seguro frente a XSS).
+ * - Token de refresco: NO lo ve JavaScript; viaja en una cookie httpOnly que gestiona el servidor.
+ * - Marca `ghbus.session`: solo indica «hubo una sesión» para no pedir renovación a los visitantes
+ *   anónimos. No contiene ningún secreto.
  */
-const REFRESH_KEY = 'ghbus.refresh'
+const SESSION_FLAG = 'ghbus.session'
 
 let accessToken: string | null = null
 
@@ -15,18 +14,18 @@ export const setAccessToken = (token: string | null): void => {
   accessToken = token
 }
 
-export function getRefreshToken(): string | null {
+export function hasSessionFlag(): boolean {
   try {
-    return sessionStorage.getItem(REFRESH_KEY)
+    return localStorage.getItem(SESSION_FLAG) === '1'
   } catch {
-    return null
+    return false
   }
 }
 
-export function setRefreshToken(token: string | null): void {
+export function setSessionFlag(active: boolean): void {
   try {
-    if (token) sessionStorage.setItem(REFRESH_KEY, token)
-    else sessionStorage.removeItem(REFRESH_KEY)
+    if (active) localStorage.setItem(SESSION_FLAG, '1')
+    else localStorage.removeItem(SESSION_FLAG)
   } catch {
     /* almacenamiento no disponible */
   }
@@ -34,5 +33,5 @@ export function setRefreshToken(token: string | null): void {
 
 export function clearTokens(): void {
   accessToken = null
-  setRefreshToken(null)
+  setSessionFlag(false)
 }
