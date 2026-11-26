@@ -1,57 +1,75 @@
-import React from 'react'; // <-- ESTA LÍNEA ES LA QUE FALTA
-
-interface Seat {
-  seat_number: number;
-  status: 'AVAILABLE' | 'OCCUPIED';
-}
+import type { FC } from 'react'
+import type { Seat } from '@/services/reservations'
 
 interface SeatMapProps {
   seats: Seat[];
   selectedSeats: number[];
-  onSeatClick: (seatNumber: number) => void;
+  onSeatClick?: (seatNumber: number) => void;
+  readOnly?: boolean;
+  variant?: 'default' | 'booking';
 }
 
-export const SeatMap: React.FC<SeatMapProps> = ({ seats, selectedSeats, onSeatClick }) => {
+export const SeatMap: FC<SeatMapProps> = ({
+  seats,
+  selectedSeats,
+  onSeatClick,
+  readOnly = false,
+  variant = 'default',
+}) => {
+  const isBooking = variant === 'booking'
+
   return (
-    <div className="bg-gray-100 p-6 rounded-lg shadow-inner max-w-md mx-auto">
-      {/* Cabecera del bus */}
-      <div className="text-center text-sm font-bold text-gray-500 mb-4 border-b pb-2">
-        🚌 Frente del Bus
+    <div className={isBooking ? 'seat-map seat-map--booking' : 'bg-gray-100 p-6 rounded-lg shadow-inner max-w-md mx-auto'}>
+      <div className={isBooking ? 'seat-map__front' : 'text-center text-sm font-bold text-gray-500 mb-4 border-b pb-2'}>
+        {isBooking && <span className="seat-map__front-line" aria-hidden="true" />}
+        <span>🚌 Frente del Bus</span>
+        {isBooking && <span className="seat-map__front-line" aria-hidden="true" />}
       </div>
-      
-      {/* Cuadrícula de asientos (ej. 4 por fila) */}
-      <div className="grid grid-cols-4 gap-3">
-        {seats.map((seat) => {
+
+      <div className={isBooking ? 'seat-map__grid' : 'grid grid-cols-4 gap-3'}>
+        {seats.map((seat, index) => {
           const isSelected = selectedSeats.includes(seat.seat_number);
           const isOccupied = seat.status === 'OCCUPIED';
 
-          let seatClass = "w-12 h-12 flex items-center justify-center rounded-md cursor-pointer text-sm font-semibold transition-all ";
-          
-          if (isOccupied) {
-            seatClass += "bg-gray-300 text-gray-500 cursor-not-allowed"; // Ocupado
-          } else if (isSelected) {
-            seatClass += "bg-green-500 text-white shadow-md transform scale-105"; // Seleccionado
-          } else {
-            seatClass += "bg-white border-2 border-blue-200 text-blue-800 hover:border-blue-500"; // Disponible
-          }
+          const seatClass = isBooking
+            ? `seat-map__seat seat-map__seat--${isOccupied ? 'occupied' : isSelected ? 'selected' : 'available'}${(index + 1) % 4 === 0 ? ' seat-map__seat--aisle' : ''}`
+            : `flex h-12 w-12 items-center justify-center rounded-md text-sm font-semibold transition-all ${
+                isOccupied
+                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                  : isSelected
+                    ? 'bg-green-500 text-white shadow-md transform scale-105'
+                    : `bg-white border-2 border-blue-200 text-blue-800 ${readOnly ? 'cursor-default' : 'cursor-pointer hover:border-blue-500'}`
+              }`;
 
           return (
-            <div
+            <button
               key={seat.seat_number}
+              type="button"
               className={seatClass}
-              onClick={() => !isOccupied && onSeatClick(seat.seat_number)}
+              disabled={readOnly || isOccupied}
+              aria-label={`Asiento ${seat.seat_number}: ${isOccupied ? 'Ocupado' : isSelected ? 'Seleccionado' : 'Libre'}`}
+              aria-pressed={isSelected}
+              onClick={() => !isOccupied && onSeatClick?.(seat.seat_number)}
             >
-              {seat.seat_number}
-            </div>
+              <span className={isBooking ? 'seat-map__number' : undefined}>{seat.seat_number}</span>
+            </button>
           );
         })}
       </div>
 
-      {/* Referencias */}
-      <div className="flex justify-center gap-4 mt-6 text-xs text-gray-600">
-        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-white border-2 border-blue-200 rounded"></div> Libre</div>
-        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-green-500 rounded"></div> Seleccionado</div>
-        <div className="flex items-center gap-1"><div className="w-3 h-3 bg-gray-300 rounded"></div> Ocupado</div>
+      <div className={isBooking ? 'seat-map__legend' : 'flex justify-center gap-4 mt-6 text-xs text-gray-600'}>
+        <div className={isBooking ? undefined : 'flex items-center gap-1'}>
+          <span className={isBooking ? 'seat-map__legend-swatch seat-map__legend-swatch--available' : 'w-3 h-3 bg-white border-2 border-blue-200 rounded'} />
+          Libre
+        </div>
+        <div className={isBooking ? undefined : 'flex items-center gap-1'}>
+          <span className={isBooking ? 'seat-map__legend-swatch seat-map__legend-swatch--selected' : 'w-3 h-3 bg-green-500 rounded'} />
+          Seleccionado
+        </div>
+        <div className={isBooking ? undefined : 'flex items-center gap-1'}>
+          <span className={isBooking ? 'seat-map__legend-swatch seat-map__legend-swatch--occupied' : 'w-3 h-3 bg-gray-300 rounded'} />
+          Ocupado
+        </div>
       </div>
     </div>
   );

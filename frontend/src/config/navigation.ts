@@ -40,7 +40,7 @@ export const NAV_MODULES: NavModule[] = [
       { label: 'Venta de boletos', path: '/panel/comercial/venta', roles: [ADMIN, CAJA] },
       { label: 'Mapa de asientos', path: '/panel/comercial/mapa-asientos', roles: [ADMIN, CAJA] },
       { label: 'Pasajeros', path: '/panel/comercial/pasajeros', roles: [ADMIN, CAJA] },
-      { label: 'Control de embarque', path: '/panel/comercial/embarque', roles: [ADMIN, DESP] },
+      { label: 'Control de embarque', path: '/panel/comercial/embarque', roles: [ADMIN, DESP, COND] },
     ],
   },
   {
@@ -56,6 +56,7 @@ export const NAV_MODULES: NavModule[] = [
     label: 'Seguridad y control',
     items: [
       { label: 'Reportes y estadísticas', path: '/panel/seguridad/reportes', roles: [ADMIN] },
+      { label: 'Bitácora de auditoría', path: '/panel/seguridad/auditoria', roles: [ADMIN] },
       { label: 'Usuarios', path: '/panel/seguridad/usuarios', roles: [ADMIN] },
       { label: 'Roles y permisos', path: '/panel/seguridad/roles', roles: [ADMIN] },
       { label: 'Configuración general', path: '/panel/seguridad/configuracion', roles: [ADMIN] },

@@ -1,21 +1,16 @@
-"""Datos ILUSTRATIVOS para probar las pantallas. NO son datos reales de la empresa.
-
-Uso:  python manage.py cargar_demo
-Los nombres de ciudades son reales; duraciones, distancias, precios y la flota son inventados.
-Es idempotente (se puede repetir) y se niega a correr con DEBUG=False salvo con --forzar.
-"""
-from datetime import date
+"""Carga el catálogo GH BUS y activos ilustrativos para pruebas locales."""
 
 from django.conf import settings
+from django.core.management import call_command
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from apps.fleet.models import AsientoPlantilla, ConfiguracionAsientos, Vehiculo
-from apps.routes.models import Ciudad, Horario, Ruta, Tarifa, TipoServicio
+from apps.routes.models import TipoServicio
 
 
 class Command(BaseCommand):
-    help = "Carga datos ilustrativos (DEMO) de rutas, tarifas, horarios y un bus."
+    help = "Carga el catálogo GH BUS y un bus/plantilla de asientos ilustrativos."
 
     def add_arguments(self, parser):
         parser.add_argument("--forzar", action="store_true", help="Permite ejecutarlo con DEBUG=False")
@@ -24,20 +19,8 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         if not settings.DEBUG and not opts["forzar"]:
             raise CommandError("Datos DEMO: solo en desarrollo (DEBUG=True). Usa --forzar si estás seguro.")
-        c = {n: Ciudad.objects.get_or_create(nombre=n, departamento="San Martín")[0]
-             for n in ("Moyobamba", "Rioja", "Tarapoto")}
-        servicio, _ = TipoServicio.objects.get_or_create(
-            codigo="COMFORT", defaults={"nombre": "Comfort Class", "descripcion": "DEMO"})
-        for codigo, nombre, o, d, km, minutos, monto in [
-            ("DEMO-MOY-TAR", "Moyobamba - Tarapoto (DEMO)", "Moyobamba", "Tarapoto", "110.0", 150, "25.00"),
-            ("DEMO-TAR-MOY", "Tarapoto - Moyobamba (DEMO)", "Tarapoto", "Moyobamba", "110.0", 150, "25.00"),
-        ]:
-            ruta, _ = Ruta.objects.get_or_create(codigo=codigo, defaults=dict(
-                nombre=nombre, origen=c[o], destino=c[d], distancia_km=km, duracion_min=minutos))
-            Tarifa.objects.get_or_create(ruta=ruta, tipo_servicio=servicio, vigente_desde=date(2026, 1, 1),
-                                         defaults={"monto": monto})
-            Horario.objects.get_or_create(ruta=ruta, tipo_servicio=servicio, hora_salida="08:00",
-                                          vigente_desde=date(2026, 1, 1))
+        call_command("cargar_catalogo_ghbus", forzar=opts["forzar"])
+        servicio = TipoServicio.objects.get(codigo="ESTANDAR_ECONOMICO")
         cfg, creada = ConfiguracionAsientos.objects.get_or_create(
             nombre="Bus 1 piso (DEMO)", defaults={"pisos": 1, "total_asientos": 40})
         if creada:
@@ -45,6 +28,10 @@ class Command(BaseCommand):
                 AsientoPlantilla(configuracion=cfg, numero=(f - 1) * 4 + col, piso=1, fila=f, columna=col,
                                  categoria="VENTANA" if col in (1, 4) else "PASILLO")
                 for f in range(1, 11) for col in range(1, 5)])
-        Vehiculo.objects.get_or_create(placa="DEMO-001", defaults=dict(
-            marca="DEMO", modelo="DEMO", anio=2024, configuracion_asientos=cfg, tipo_servicio=servicio))
-        self.stdout.write(self.style.WARNING("Datos DEMO cargados (ilustrativos, no reales)."))
+        Vehiculo.objects.update_or_create(
+            placa="DEMO-001",
+            defaults=dict(marca="DEMO", modelo="DEMO", anio=2024, configuracion_asientos=cfg, tipo_servicio=servicio),
+        )
+        self.stdout.write(self.style.WARNING(
+            "Catálogo GH BUS cargado. La plantilla y el vehículo DEMO-001 son activos ilustrativos."
+        ))

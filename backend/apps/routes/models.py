@@ -11,6 +11,8 @@ TODOS_LOS_DIAS = 127
 class Ciudad(TimeStamped):
     nombre = models.CharField(max_length=80)
     departamento = models.CharField(max_length=80)
+    provincia = models.CharField(max_length=80, blank=True, default="")
+    observaciones = models.CharField(max_length=255, blank=True, default="")
     activa = models.BooleanField(default=True)
 
     class Meta:
@@ -24,7 +26,7 @@ class Ciudad(TimeStamped):
 
 
 class TipoServicio(TimeStamped):
-    """Clase de servicio, p. ej. «Comfort Class»."""
+    """Clase comercial de servicio, p. ej. Bus Cama o Semi-Cama."""
 
     codigo = models.CharField(max_length=20, unique=True)
     nombre = models.CharField(max_length=80)

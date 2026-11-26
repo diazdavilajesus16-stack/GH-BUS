@@ -8,17 +8,20 @@ Sistema web integral de gestión de transporte interprovincial.
 | Frontend | React + Vite + TypeScript + Tailwind | `frontend/` |
 | Backend principal | Python + Django REST Framework | `backend/` |
 | Servicio en tiempo real | Node.js + Express + Socket.IO (TypeScript) | `realtime/` |
-| Base de datos | MySQL | (Docker) |
+| Base de datos | PostgreSQL en Supabase (destino); MySQL se conserva para el entorno Docker/datos actuales | Supabase / `docker-compose.yml` |
 | Orquestación | Docker Compose | `docker-compose.yml` |
 
 Django centraliza la lógica de negocio y es el único que escribe en operaciones críticas. Node.js solo gestiona tiempo real.
 
-## Estado
-- [x] Fase 1: análisis y planificación
-- [ ] Fase 2: backend (Pasos 1–9 hechos; Paso 10 en curso: catálogos y viajes/despacho listos, faltan Comercial, Financiero y Seguridad/reportes)
-- [ ] Fase 3: frontend
-- [ ] Fase 4: integración
-- [ ] Fase 5: pruebas y despliegue
+## Estado actual
+- Flujos de operación, despacho, comercial, caja, liquidaciones, reportes y seguridad implementados para demostración local.
+- Roles, reservas, asientos, pagos simulados, emisión/validación de QR y cancelación de viajes conectados entre frontend y backend.
+- **Alcance académico:** no hay pasarela real de pago, reembolsos, GPS en vivo ni SMTP configurado por defecto. No presentar la versión local como producción.
+
+## Manuales
+- [Manual de usuario por roles y recorrido de demostración](docs/manual-usuario.md)
+- [Manual técnico de instalación y administración](docs/manual-tecnico.md)
+- [Índice de rutas API](docs/api.md)
 
 ## Puesta en marcha (desarrollo)
 
@@ -28,6 +31,7 @@ cp .env.example .env          # edita las contraseñas
 docker compose up -d db
 docker compose ps             # debe mostrar "healthy"
 ```
+> MySQL se mantiene como entorno local legado. La base de Supabase se inicializó sin importar registros históricos de MySQL; conserva cualquier respaldo existente si luego decides recuperarlos.
 > Django 6.1 exige **MySQL 8.4 o superior**. El MySQL de Docker Compose ya es 8.4; si usas uno instalado en tu equipo, debe ser 8.4+.
 
 ### 2. Backend Django
@@ -36,12 +40,15 @@ cd backend
 python -m venv .venv
 # Windows (PowerShell): .venv\Scripts\Activate.ps1   |   Linux/Mac: source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env          # completa DJANGO_SECRET_KEY y DB_PASSWORD
+cp .env.example .env          # completa DJANGO_SECRET_KEY y DATABASE_URL de Supabase
 python manage.py migrate
 python manage.py createcachetable   # tabla del contador de intentos de login
 python manage.py createsuperuser
 python manage.py runserver
 ```
+- Para usar Supabase, crea el proyecto y pega su URI PostgreSQL en `backend/.env` como `DATABASE_URL`;
+  conserva `DB_ENGINE=postgres`. En Render configura esas mismas variables en el servicio backend, nunca en el frontend.
+- `migrate` crea el esquema, **no copia los registros de MySQL**. La base de Supabase se preparó sin registros históricos; si después necesitas recuperarlos, importa un respaldo antes de usarla con datos reales.
 - Salud del servicio: http://localhost:8000/api/health/
 - Swagger: http://localhost:8000/api/docs/
 - Pruebas: `python manage.py test`
@@ -88,7 +95,7 @@ Abre http://localhost:8080. Solo se publica el servicio `web` (nginx):
 (sin necesidad de asignarle el grupo). Desde ahí, en el panel → Seguridad y control → Usuarios, se crean el
 resto de cuentas. En desarrollo, el frontend (`npm run dev`) manda `/api` a Django por el proxy de Vite.
 
-Backend y realtime no tienen puertos públicos; MySQL escucha solo en `127.0.0.1`.
+En el Compose local, backend y realtime no tienen puertos públicos; el MySQL de origen escucha solo en `127.0.0.1`.
 Crear el primer usuario: `docker compose exec backend python manage.py createsuperuser`.
 Detener: `docker compose down` (los datos persisten en el volumen `mysql_data`; `down -v` los borra).
 
@@ -115,7 +122,7 @@ Conductores los usan administrador y despachador. El cajero puede *leer* rutas, 
 - Nada se borra: los registros se **desactivan**. Cada alta y cambio queda en la bitácora de auditoría.
 - Reglas ya aplicadas: tarifas activas de una misma ruta/servicio no se cruzan; paradas dentro de la duración de la ruta;
   turnos de un conductor no se cruzan; el estado «En viaje» de un vehículo solo lo pone el sistema; placas y códigos en mayúsculas.
-- **Datos de demostración (NO reales):** `python manage.py cargar_demo` (con `docker compose exec backend python manage.py cargar_demo --forzar`).
+- **Catálogo de localidades, rutas, tipos de servicio y precios referenciales proporcionados para GH BUS:** `python manage.py cargar_catalogo_ghbus` (con Docker: `docker compose exec backend python manage.py cargar_catalogo_ghbus --forzar`). Las tarifas iniciales se asignan solo a Estándar / Económico; los datos no han sido verificados independientemente y no se crean horarios porque no se informaron horas de salida.
   Ciudades reales de San Martín; duraciones, precios y la flota son inventados, solo para probar las pantallas.
 - Los **parámetros** (minutos de bloqueo, margen entre viajes, descanso del conductor, categorías de licencia, IGV…) traen
   los valores iniciales de `docs/database.md` §7 y **deben confirmarse con la empresa** (en especial las categorías de licencia con el MTC).
@@ -133,10 +140,15 @@ y **Seguimiento de viajes** (también conductor, que ve solo sus viajes).
   cada cambio queda en el historial y en la auditoría y se avisa en tiempo real (Socket.IO) a las pantallas del personal.
 - **Incidencias** (mecánica, retraso, accidente, clima, pasajero, otro): las de severidad alta generan aviso inmediato al personal.
 - **Alertas** de documentos y licencias vencidos o por vencer, en Despacho.
-- **Para probar con los datos DEMO:** el vehículo DEMO-001 y los conductores demo no traen documentos ni licencias: regístralos en
-  *Vehículos* y *Conductores* (SOAT, Revisión técnica; licencia A-IIIb vigente) o el sistema —correctamente— no dejará asignarlos.
-- Pendiente a propósito: al cancelar un viaje todavía no se gestionan boletos (no existen hasta el módulo Comercial); el cambio a «En embarque» no restringe la hora;
-  el tipo de turno «TURNO» no bloquea al conductor (solo descanso y vacaciones); `posicion_unidad` (GPS) no se construyó.
+- **Para una presentación local:** `cargar_demo` carga el catálogo y añade la plantilla de asientos y el vehículo ilustrativo `DEMO-001`. No crea horarios, cuentas, conductores, licencias ni documentos vehiculares; registra esos datos de prueba antes de asignar.
+- Al cancelar un viaje, las reservas y boletos asociados se anulan y se liberan los asientos; no existe un flujo de reembolso.
+- Límites conocidos: el cambio a «En embarque» no restringe la hora; el tipo de turno «TURNO» no bloquea al conductor (solo descanso y vacaciones); `posicion_unidad` (GPS) no se construyó.
+
+## Comercial y financiero
+- El cliente autenticado o el personal autorizado puede reservar asientos; el servidor controla la disponibilidad y vence reservas pendientes según la configuración.
+- La confirmación emite el QR. Cancelar un viaje anula sus reservas y boletos relacionados. Las cancelaciones no generan reembolsos.
+- **Yape y Visa son simulados:** no se contacta una pasarela ni se cobran tarjetas. El efectivo queda pendiente hasta que un cajero con caja abierta lo confirme.
+- Caja registra ingresos y egresos de demostración; las liquidaciones se habilitan para viajes finalizados. Los datos no deben interpretarse como contabilidad real.
 
 ## Flujo de ramas
 `main` (estable) <- `develop` (integración) <- `feature/*`

@@ -10,12 +10,18 @@ def _normalizar_codigo(valor: str) -> str:
 class CiudadSerializer(serializers.ModelSerializer):
     class Meta:
         model = Ciudad
-        fields = ["id", "nombre", "departamento", "activa"]
+        fields = ["id", "nombre", "departamento", "provincia", "observaciones", "activa"]
 
     def validate_nombre(self, v):
         return v.strip()
 
     def validate_departamento(self, v):
+        return v.strip()
+
+    def validate_provincia(self, v):
+        return v.strip()
+
+    def validate_observaciones(self, v):
         return v.strip()
 
 
