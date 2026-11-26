@@ -57,11 +57,23 @@ Este comando carga también el catálogo y añade `DEMO-001` con una plantilla i
 | Servicio | Responsabilidad | Acceso |
 |---|---|---|
 | `web` | Nginx sirve React y enruta las peticiones. Es el único servicio publicado por Compose. | `http://localhost:8080` |
-| `backend` | Django valida sesión, roles y reglas; es el único escritor de negocio en la base de datos. | Solo red interna; API bajo `/api/` |
-| `realtime` | Node valida los mensajes firmados de Django y distribuye eventos Socket.IO. No decide disponibilidad ni estados. | Solo red interna |
+| `backend` | Django valida sesión, roles y reglas; es el único escritor de negocio en la base de datos. | Compose: solo red interna. Render Free: URL pública del servicio; la API exige autenticación salvo rutas públicas |
+| `realtime` | Node valida los mensajes firmados de Django y distribuye eventos Socket.IO. No decide disponibilidad ni estados. | Compose: solo red interna. Render Free: URL pública; `/internal/events` exige firma HMAC |
 | `db` | MySQL 8.4 local, conservado para los datos actuales. | `127.0.0.1:3307` |
 
 Para conectar Django local a Supabase, configura `DB_ENGINE=postgres` y `DATABASE_URL` en `backend/.env`. En Render, define esas variables en el backend como secretos; no expongas `DATABASE_URL` al frontend.
+
+### 4.1 Prueba gratuita en Render
+
+El archivo `render.yaml` crea tres servicios web gratuitos: API Django, realtime y Nginx/React. El frontend conserva un único origen para el navegador y hace proxy hacia las URL públicas de los otros dos servicios. En el plan gratuito no se puede depender de que un servicio Free reciba tráfico por la red privada de Render.
+
+1. Publica `render.yaml` y los cambios de despliegue en la rama que quieres probar; para validar antes de integrar, usa `integration/develop-to-main`.
+2. En Render, elige **New > Blueprint**, conecta el repositorio GH-BUS y selecciona esa rama. Revisa el Blueprint antes de aplicarlo: deben ser tres servicios con plan **Free**.
+3. Cuando Render lo solicite, pega `DATABASE_URL` de Supabase solo en el servicio `ghbus-diaz16-preview-api`. No la guardes en el repositorio ni la compartas por chat. Render genera `DJANGO_SECRET_KEY`, `JWT_SIGNING_KEY` y `REALTIME_HMAC_SECRET`, y comparte con realtime únicamente las claves que necesita.
+4. Los servicios quedan en Virginia. Si tu proyecto de Supabase está en otra región, cambia `region` en `render.yaml` antes de crear los servicios; Render no permite mover un servicio existente a otra región.
+5. Comprueba `/` en `ghbus-diaz16-preview-web.onrender.com`, `/api/health/` en `ghbus-diaz16-preview-api.onrender.com` y `/health` en `ghbus-diaz16-preview-realtime.onrender.com`. Después prueba inicio de sesión, cookie de refresco y eventos en tiempo real desde la web.
+
+Los servicios Free se duermen después de 15 minutos sin tráfico y pueden tardar alrededor de un minuto en despertar. Las 750 horas gratuitas mensuales son compartidas por los servicios Free del workspace; también hay límites de ancho de banda y compilación. La API y realtime tienen subdominios públicos: el API requiere autenticación por defecto y el endpoint interno de realtime exige HMAC. Esto es para pruebas, no producción; no ingreses datos reales ni habilites cobros. Los datos persistentes deben vivir en Supabase, no en el disco de Render.
 
 Las reglas de compra, asignación, embarque y caja se deben validar en Django; el navegador y Socket.IO solo presentan cambios.
 

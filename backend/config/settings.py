@@ -137,6 +137,8 @@ else:
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 DATABASES["default"]["ATOMIC_REQUESTS"] = False
+USE_PROXY_HEADERS = env.bool("USE_PROXY_HEADERS", default=False)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if USE_PROXY_HEADERS else None
 
 # Caché en base de datos: compartida entre los procesos de Gunicorn (límites de intentos de login).
 # La tabla se crea con `python manage.py createcachetable` (el entrypoint de Docker lo hace).
@@ -198,7 +200,7 @@ REST_FRAMEWORK = {
         "assistant": "20/hour",
     },
     # Detrás de nginx hay 1 proxy: la IP real del cliente es la que nginx añade a X-Forwarded-For.
-    "NUM_PROXIES": 1 if env.bool("USE_PROXY_HEADERS", default=False) else 0,
+    "NUM_PROXIES": 1 if USE_PROXY_HEADERS else 0,
 }
 
 SIMPLE_JWT = {
@@ -222,9 +224,6 @@ AUTH_COOKIE_PATH = "/api/auth/"
 AUTH_COOKIE_SAMESITE = "Strict"
 # True cuando el sitio se sirva por HTTPS. En desarrollo local por http debe ser False.
 AUTH_COOKIE_SECURE = env.bool("AUTH_COOKIE_SECURE", default=not DEBUG)
-
-# Solo True detrás del nginx de Docker (única puerta de entrada): permite leer la IP real del cliente.
-USE_PROXY_HEADERS = env.bool("USE_PROXY_HEADERS", default=False)
 
 # Intentos fallidos de login permitidos por usuario + IP antes de bloquear temporalmente.
 LOGIN_MAX_FAILURES = env.int("LOGIN_MAX_FAILURES", default=5)

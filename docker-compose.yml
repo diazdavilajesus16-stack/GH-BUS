@@ -46,6 +46,7 @@ services:
       CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-}
       # Detrás de nginx: confía en 1 proxy para la IP real del cliente (bloqueo de login y auditoría)
       USE_PROXY_HEADERS: "True"
+      PORT: "8000"
       # Cookie de sesión: Secure solo cuando se sirva por HTTPS (en local por http debe ser False)
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-False}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:8080}
@@ -97,6 +98,14 @@ services:
         VITE_REALTIME_URL: ""
     container_name: ghbus-web
     restart: unless-stopped
+    environment:
+      PORT: "80"
+      PUBLIC_SCHEME: http
+      DNS_RESOLVER: 127.0.0.11
+      BACKEND_URL: http://backend:8000
+      BACKEND_HOST: "$$http_host"
+      REALTIME_URL: http://realtime:4000
+      REALTIME_HOST: "$$http_host"
     depends_on:
       backend:
         condition: service_healthy

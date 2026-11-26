@@ -7,8 +7,8 @@ import { eventSchema, roomsFor } from './schema';
 type RawBodyRequest = Request & { rawBody?: Buffer };
 
 /**
- * Canal interno Django -> Node. Cada mensaje debe venir firmado (HMAC) y reciente.
- * En producción este prefijo (/internal) no debe exponerse fuera de la red de Docker.
+ * Canal Django -> Node. Cada mensaje debe venir firmado (HMAC) y reciente.
+ * En Render Free la ruta es pública; en producción, usar red privada además del HMAC.
  */
 export function createInternalRouter(io: Server, env: Env): Router {
   const router = Router();

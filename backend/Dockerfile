@@ -24,8 +24,9 @@ RUN DJANGO_SECRET_KEY=build-only DB_ENGINE=sqlite JWT_SIGNING_KEY=build-only \
 RUN useradd --system --no-create-home --uid 10001 app && chmod +x docker-entrypoint.sh
 USER app
 
-EXPOSE 8000
+ENV PORT=10000
+EXPOSE 10000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=40s --retries=5 \
-    CMD python -c "import urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8000/api/health/', headers={'Host': 'localhost'}), timeout=4)"
+    CMD python -c "import os, urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:%s/api/health/' % os.environ['PORT'], headers={'Host': 'localhost'}), timeout=4)"
 
 ENTRYPOINT ["./docker-entrypoint.sh"]
