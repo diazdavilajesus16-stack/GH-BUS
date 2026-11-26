@@ -66,6 +66,8 @@ services:
       JWT_SIGNING_KEY: ${JWT_SIGNING_KEY:?Define JWT_SIGNING_KEY en .env}
       REALTIME_URL: http://realtime:4000
       REALTIME_HMAC_SECRET: ${REALTIME_HMAC_SECRET:?Define REALTIME_HMAC_SECRET en .env}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.6-flash}
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-3}
     expose:
       - "8000"
@@ -97,7 +99,7 @@ services:
     restart: unless-stopped
     depends_on:
       backend:
-        condition: service_started
+        condition: service_healthy
       realtime:
         condition: service_healthy
     ports:

@@ -1,7 +1,8 @@
-# Modelo de datos de GH BUS
+# Modelo conceptual de datos de GH BUS
 
-Diseño de la base de datos (Paso 8). Motor: **MySQL 8.4 / InnoDB**, `utf8mb4`. Acceso y escritura únicamente a través del ORM de Django.
-Este documento es el contrato: los modelos de cada app se escriben a partir de él.
+> **Nota de vigencia:** este documento conserva el diseño inicial y puede describir entidades todavía no implementadas o nombres distintos a los actuales. No es el contrato del esquema físico. Para conocer las tablas reales y sus cambios, usa los modelos y migraciones de Django; estos son la fuente de verdad de la aplicación.
+
+El diseño inicial planteaba **MySQL 8.4 / InnoDB**, `utf8mb4`, con acceso de negocio a través del ORM de Django. La aplicación se está preparando para PostgreSQL en Supabase; las notas de MySQL en este documento describen decisiones históricas y no sustituyen las migraciones de Django ni la verificación de portabilidad. Para instalación y límites, consulta el [manual técnico](manual-tecnico.md).
 
 ## 0. Convenciones
 
@@ -165,7 +166,7 @@ ciudad
   nombre · departamento · activa
   UQ (nombre, departamento)
 
-tipo_servicio                             -- p. ej. Comfort Class
+tipo_servicio                             -- p. ej. Económico, Estándar, Semi-Cama, Bus Cama o Comfort Class
   codigo UQ · nombre · descripcion · activo
 
 ruta

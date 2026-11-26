@@ -6,6 +6,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -90,18 +91,28 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 # --------------------------------------------------------------------------
-# Base de datos: MySQL (única fuente de datos).
-# DB_ENGINE=sqlite existe solo para pruebas automáticas rápidas (CI);
-# el sistema real usa siempre MySQL.
+# Base de datos. PostgreSQL es el destino de producción (Supabase).
+# MySQL se conserva para el entorno Docker actual y la exportación de datos.
+# SQLite se usa únicamente en pruebas rápidas y durante collectstatic.
 # --------------------------------------------------------------------------
-if env("DB_ENGINE", default="mysql") == "sqlite":
+DB_ENGINE = env("DB_ENGINE", default="mysql").lower()
+
+if DB_ENGINE == "sqlite":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.sqlite3",
             "NAME": BASE_DIR / "db.sqlite3",
         }
     }
-else:
+elif DB_ENGINE == "postgres":
+    DATABASES = {"default": env.db_url("DATABASE_URL")}
+    DATABASES["default"].update(
+        {
+            "CONN_MAX_AGE": 60,
+            "CONN_HEALTH_CHECKS": True,
+        }
+    )
+elif DB_ENGINE == "mysql":
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.mysql",
@@ -110,21 +121,22 @@ else:
             "PASSWORD": env("DB_PASSWORD"),
             "HOST": env("DB_HOST", default="127.0.0.1"),
             "PORT": env("DB_PORT", default="3306"),
-            # Sin ATOMIC_REQUESTS a propósito: las operaciones críticas usan transaction.atomic()
-            # en la capa de servicio. Así los registros de auditoría de peticiones rechazadas
-            # (login fallido, permiso denegado) no se revierten junto con la petición.
+            # Sin ATOMIC_REQUESTS: las operaciones críticas usan transaction.atomic().
             "CONN_MAX_AGE": 60,
             "OPTIONS": {
                 "charset": "utf8mb4",
-                # Evita bloqueos innecesarios (gap locks) en operaciones concurrentes
-                # como la venta de asientos.
                 "isolation_level": "read committed",
                 "init_command": "SET sql_mode='STRICT_TRANS_TABLES'",
             },
         }
     }
+else:
+    raise ImproperlyConfigured(
+        f"DB_ENGINE no reconocido: {DB_ENGINE}. Usa postgres, mysql o sqlite."
+    )
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+DATABASES["default"]["ATOMIC_REQUESTS"] = False
 
 # Caché en base de datos: compartida entre los procesos de Gunicorn (límites de intentos de login).
 # La tabla se crea con `python manage.py createcachetable` (el entrypoint de Docker lo hace).
@@ -183,6 +195,7 @@ REST_FRAMEWORK = {
         "login_ip": "30/min",
         "register": "10/hour",
         "password_reset": "5/hour",
+        "assistant": "20/hour",
     },
     # Detrás de nginx hay 1 proxy: la IP real del cliente es la que nginx añade a X-Forwarded-For.
     "NUM_PROXIES": 1 if env.bool("USE_PROXY_HEADERS", default=False) else 0,
@@ -216,6 +229,8 @@ USE_PROXY_HEADERS = env.bool("USE_PROXY_HEADERS", default=False)
 # Intentos fallidos de login permitidos por usuario + IP antes de bloquear temporalmente.
 LOGIN_MAX_FAILURES = env.int("LOGIN_MAX_FAILURES", default=5)
 LOGIN_LOCKOUT_SECONDS = env.int("LOGIN_LOCKOUT_SECONDS", default=900)
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
+GEMINI_MODEL = env("GEMINI_MODEL", default="gemini-3.6-flash")
 
 # --------------------------------------------------------------------------
 # Correo (recuperación de contraseña). Por defecto se imprime en la consola del servidor.

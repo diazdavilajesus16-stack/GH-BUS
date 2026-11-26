@@ -28,6 +28,7 @@ def _inicio_del_dia(d):
 
 class ViajeFilter(django_filters.FilterSet):
     estado = django_filters.BaseInFilter(field_name="estado", help_text="Uno o varios estados separados por coma")
+    salida_desde = django_filters.IsoDateTimeFilter(field_name="salida_programada", lookup_expr="gte")
     fecha_desde = django_filters.DateFilter(method="filtrar_desde")
     fecha_hasta = django_filters.DateFilter(method="filtrar_hasta")
 
